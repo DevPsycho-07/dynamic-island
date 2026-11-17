@@ -1,0 +1,27 @@
+# Windows (.NET) build output
+windows/**/bin/
+windows/**/obj/
+windows/publish/
+*.user
+.vs/
+
+# Android build output / local machine config
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.iml
+.idea/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Tools that drop files into the repo
+.github/modernize/
+.claude/
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store

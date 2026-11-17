@@ -1,0 +1,91 @@
+package com.rsv.dynamicisland
+
+import android.content.Context
+import android.content.SharedPreferences
+
+/** Every setting and every bit of persisted state lives in one SharedPreferences file. */
+object Prefs {
+    private const val FILE = "island"
+
+    // Island
+    const val ISLAND_ON = "island_on"
+    const val OFFSET_X = "offset_x_dp"
+    const val OFFSET_Y = "offset_y_dp"
+    const val WIDTH = "width_dp"
+    const val HEIGHT = "height_dp"
+    const val AUTOFIT_DONE = "autofit_done"
+    const val PEEK_NOTIFS = "peek_notifs"
+    const val PEEK_CHARGING = "peek_charging"
+
+    // Hydration
+    const val WATER_ON = "water_on"
+    const val GOAL = "goal_ml"
+    const val GOAL_AUTO = "goal_auto"
+    const val WEIGHT = "weight_kg"
+    const val ACTIVITY = "activity_min"
+    const val HOT = "hot_day"
+    const val CUP = "cup_ml"
+    const val DRINK_TYPE = "drink_type"
+    const val WAKE = "wake_min"
+    const val SLEEP = "sleep_min"
+    const val CUPS = "cups_json"             // [{"name","ml"}] quick-add cups (synced)
+    const val DEVICE_ID = "device_id"        // "phone-xxxxxxxx", local only
+    const val LAST_DRINK = "last_drink_at"   // signal: a drink was logged on this phone
+    const val TODAY_ML = "today_ml"          // signal/cache: hydration-adjusted ml today
+    const val SNOOZE_UNTIL = "snooze_until"
+    const val LAST_REMINDER = "last_reminder_at"
+    const val IGNORED = "ignored_reminders"
+
+    // v2 storage, read once to migrate into the event log
+    const val TODAY_KEY = "today_key"
+    const val ENTRIES = "entries_today"
+    const val HISTORY = "history"
+
+    // Pet progression (derived from the drink log; these are just signals / seen-state)
+    const val PET_KIND = "pet_kind"
+    const val PET_COS = "pet_cos_"           // + PetKind.name -> cosmetic index (-1 = none)
+    const val BLOOMS = "blooms"
+    const val ACHIEVEMENTS = "achievements"  // achievements already announced
+    const val ACH_LAST = "ach_last"
+    const val ACH_AT = "ach_at"
+    const val GOAL_HIT_AT = "goal_hit_at"
+    const val EVOLVED_AT = "evolved_at"
+
+    // Laptop sync through TwinDesk's shared folder
+    const val SYNC_TREE = "sync_tree_uri"
+    const val SYNC_TS = "sync_setting_ts"    // {"GoalMl": ts, ...}
+    const val SYNC_STATE = "sync_state"      // none | ok | offline | lost
+    const val SYNC_AT = "sync_last_ok"
+    const val SYNC_CHANGED_AT = "sync_changed_at"
+
+    // Timer / focus
+    const val TIMER_END = "timer_end_at"
+    const val TIMER_TOTAL = "timer_total_ms"
+    const val TIMER_DONE_AT = "timer_done_at"
+    const val TIMER_PAUSED_LEFT = "timer_paused_left_ms"
+    const val FOCUS_DAY = "focus_day"
+    const val FOCUS_SESSIONS = "focus_sessions"
+    const val FOCUS_MINUTES = "focus_minutes"
+
+    // Feature toggles (all default on)
+    const val F_CALL = "f_call"
+    const val F_LIVE = "f_live"
+    const val F_OTP = "f_otp"
+    const val F_REPLY = "f_reply"
+    const val F_BT = "f_bt"
+    const val F_PRIVACY = "f_privacy"
+    const val F_VOLUME = "f_volume"
+    const val F_RINGER = "f_ringer"
+    const val F_DANCE = "f_dance"
+    const val F_DOCK = "f_dock"
+    const val F_MEDIA = "f_media"
+
+    fun on(p: SharedPreferences, key: String) = p.getBoolean(key, true)
+
+    const val DEF_WIDTH = 120
+    const val DEF_HEIGHT = 30
+    const val DEF_OFFSET_Y = 4
+
+    fun get(ctx: Context): SharedPreferences =
+        ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+}

@@ -1,0 +1,496 @@
+<Window x:Class="DynamicIsland.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:pets="clr-namespace:DynamicIsland.Pets"
+        xmlns:local="clr-namespace:DynamicIsland"
+        Title="Dynamic Island" Width="680" Height="300"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
+        FontFamily="{StaticResource UiFont}" Foreground="White"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+
+    <Grid>
+        <!-- Nearly-invisible strip so the thin docked bar is easy to hover. Only active while docked. -->
+        <Border x:Name="HoverZone" Width="240" Height="12" VerticalAlignment="Top" HorizontalAlignment="Center" Background="#01000000"/>
+
+        <!-- The island: a notch flush with the top edge (curved "ears" + rounded bottom). -->
+        <Grid x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Top" Width="150" Height="6"
+              RenderTransformOrigin="0.5,0" Cursor="Hand" AllowDrop="True">
+            <Grid.RenderTransform><ScaleTransform x:Name="PillScale"/></Grid.RenderTransform>
+            <Path x:Name="Shape" Fill="Black"/>
+
+            <Grid x:Name="Host" Margin="10,0">
+
+                <!-- DOCKED: thin bar with today's water as a hairline -->
+                <Grid x:Name="DockView" Width="130" Height="6" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Border x:Name="DockFill" Height="2" Width="0" CornerRadius="1" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12,0,0,1" Background="{StaticResource Water}" Opacity="0.85"/>
+                    <Ellipse x:Name="DockDot" Width="4" Height="4" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Visibility="Collapsed"/>
+                </Grid>
+
+                <!-- PEEK (hover on the docked bar): Drip · time · weather · battery · water -->
+                <Grid x:Name="PeekView" Width="290" Height="34" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <pets:PetView x:Name="PetMini" Compact="True" Width="24" Height="24" HorizontalAlignment="Left" Margin="9,0,0,0"/>
+                    <TextBlock x:Name="PeekTime" Text="00:00" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="38,0,0,0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="PeekWeather" FontSize="12" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock x:Name="PeekBattGlyph" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{StaticResource Green}" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                        <TextBlock x:Name="PeekBatt" FontSize="12" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <Grid Width="15" Height="15" Margin="0,0,5,0">
+                            <Ellipse Stroke="#33FFFFFF" StrokeThickness="2.4"/>
+                            <Path x:Name="PeekRing" Stroke="{StaticResource Water}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Grid>
+                        <TextBlock x:Name="PeekCups" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Water}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- MEDIA (compact) -->
+                <Grid x:Name="MediaView" Width="310" Height="36" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Border Width="24" Height="24" CornerRadius="7" HorizontalAlignment="Left" Margin="8,0,0,0" Background="#22FFFFFF">
+                        <Border.Clip><RectangleGeometry Rect="0,0,24,24" RadiusX="7" RadiusY="7"/></Border.Clip>
+                        <Image x:Name="MiniArt" Stretch="UniformToFill"/>
+                    </Border>
+                    <TextBlock x:Name="MiniTitle" Margin="42,0,62,0" VerticalAlignment="Center" FontSize="12" Foreground="#D9FFFFFF" TextTrimming="CharacterEllipsis"/>
+                    <StackPanel x:Name="Eq" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0" Height="16"/>
+                </Grid>
+
+                <!-- TIMER (compact) -->
+                <Grid x:Name="TimerView" Width="230" Height="36" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Grid Width="18" Height="18" HorizontalAlignment="Left" Margin="12,0,0,0">
+                        <Ellipse Stroke="#33FFA726" StrokeThickness="2.5"/>
+                        <Path x:Name="TimerRing" Stroke="{StaticResource Orange}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Grid>
+                    <TextBlock x:Name="TimerLabel" Text="Focus" FontSize="12" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="38,0,0,0"/>
+                    <TextBlock x:Name="TimerText" Text="25:00" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Orange}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                </Grid>
+
+                <!-- LIVE ACTIVITY (Claude Code, terminal command, build... via the Island API) -->
+                <Grid x:Name="ActivityView" Width="330" Height="36" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Border x:Name="ActIconBox" Width="24" Height="24" CornerRadius="8" HorizontalAlignment="Left" Margin="9,0,0,0" Background="#33D97757">
+                        <Grid>
+                            <TextBlock x:Name="ActIcon" FontFamily="{StaticResource IconFont}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#D97757"/>
+                            <Image x:Name="ActImage" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock x:Name="ActTitle" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="42,0,96,0" TextTrimming="CharacterEllipsis"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,40,0">
+                        <Border x:Name="ActCountBox" Background="#2EFFFFFF" CornerRadius="7" Padding="5,0" Margin="0,0,6,0" Visibility="Collapsed" VerticalAlignment="Center">
+                            <TextBlock x:Name="ActCount" FontSize="10" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock x:Name="ActElapsed" FontSize="11" Foreground="{StaticResource Dim}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Grid Width="16" Height="16" HorizontalAlignment="Right" Margin="0,0,14,0" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform><RotateTransform x:Name="ActSpin"/></Grid.RenderTransform>
+                        <Ellipse Stroke="#26FFFFFF" StrokeThickness="2.2"/>
+                        <Path x:Name="ActRing" Stroke="#D97757" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Grid>
+                </Grid>
+
+                <!-- LEVEL (volume / brightness) -->
+                <Grid x:Name="LevelView" Width="300" Height="40" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <TextBlock x:Name="LevelIcon" FontFamily="{StaticResource IconFont}" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="16,0,0,0"/>
+                    <Grid Height="6" Margin="48,0,58,0" VerticalAlignment="Center">
+                        <Border x:Name="LevelTrack" Background="#33FFFFFF" CornerRadius="3"/>
+                        <Border x:Name="LevelFill" Background="White" CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
+                    </Grid>
+                    <TextBlock x:Name="LevelText" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                </Grid>
+
+                <!-- MESSAGE (charging, copied, bluetooth, track change, timer done...) -->
+                <Grid x:Name="MessageView" Width="390" Height="56" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Border x:Name="MsgIconBox" Width="36" Height="36" CornerRadius="11" HorizontalAlignment="Left" Margin="10,0,0,0">
+                        <Border.Clip><RectangleGeometry Rect="0,0,36,36" RadiusX="11" RadiusY="11"/></Border.Clip>
+                        <Grid>
+                            <Image x:Name="MsgImage" Stretch="UniformToFill"/>
+                            <TextBlock x:Name="MsgIcon" FontFamily="{StaticResource IconFont}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <pets:PetView x:Name="MsgPet" Compact="True" Width="32" Height="32" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Margin="58,0,96,0">
+                        <TextBlock x:Name="MsgTitle" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="MsgSub" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <TextBlock x:Name="MsgValue" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button x:Name="MsgAction" Style="{StaticResource PillButton}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Visibility="Collapsed" Click="MsgAction_Click"/>
+                </Grid>
+
+                <!-- NOTIFICATION -->
+                <Grid x:Name="NotifyView" Width="450" Height="82" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Border x:Name="NotifyBadge" Width="42" Height="42" CornerRadius="13" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,16,0,0" Background="#5B8DEF">
+                        <Grid>
+                            <TextBlock x:Name="NotifyInitial" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <!-- The app's real icon when Windows can give us one -->
+                            <Image x:Name="NotifyAppIcon" Width="36" Height="36" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel Margin="68,12,18,10">
+                        <Grid>
+                            <TextBlock x:Name="NotifyApp" Style="{StaticResource Caption}"/>
+                            <TextBlock Text="now" Style="{StaticResource Caption}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <TextBlock x:Name="NotifyTitle" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="NotifyBody" FontSize="12" Foreground="#B3FFFFFF" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ALERT (Drip thirsty, reminders) -->
+                <Grid x:Name="AlertView" Width="450" Height="128" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <pets:PetView x:Name="AlertPet" Width="88" Height="88" HorizontalAlignment="Left" Margin="18,0,0,0" VerticalAlignment="Center"/>
+                    <Border x:Name="AlertGlyphBox" Width="64" Height="64" CornerRadius="20" Background="#2EFFA726" HorizontalAlignment="Left" Margin="28,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <Grid>
+                            <TextBlock x:Name="AlertGlyph" FontFamily="{StaticResource IconFont}" FontSize="26" Foreground="{StaticResource Orange}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image x:Name="AlertImage" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel Margin="116,0,22,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="AlertTitle" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="AlertLine" FontSize="12" Foreground="{StaticResource Dim}" Margin="0,2,0,12" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="AlertBtn1" Style="{StaticResource AccentButton}" Click="AlertBtn1_Click"/>
+                            <Button x:Name="AlertBtn2" Style="{StaticResource PillButton}" Margin="8,0,0,0" Click="AlertBtn2_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- EXPANDED -->
+                <Grid x:Name="ExpandedView" Width="600" Height="262" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="44"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Page strip (behind header so the album glow reaches the top) -->
+                    <Grid Grid.Row="0" Grid.RowSpan="2" ClipToBounds="True">
+                        <Image x:Name="Glow" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <Rectangle>
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#CC000000" Offset="0"/>
+                                    <GradientStop Color="#99000000" Offset="0.5"/>
+                                    <GradientStop Color="#E6000000" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+                    </Grid>
+
+                    <!-- Header: tabs | weather · privacy · time · battery · settings -->
+                    <Grid x:Name="Header" Margin="16,10,12,0" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <RadioButton x:Name="TabHome" Style="{StaticResource TabButton}" Content="&#xE80F;" ToolTip="Home" IsChecked="True" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabWater" Style="{StaticResource TabButton}" ToolTip="Water and pet" Checked="Tab_Checked">
+                                <Path Data="M6,0 C4.5,3 0,6.5 0,10 A6,6 0 0 0 12,10 C12,6.5 7.5,3 6,0 Z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Width="10" Height="13" Stretch="Uniform"/>
+                            </RadioButton>
+                            <RadioButton x:Name="TabFocus" Style="{StaticResource TabButton}" Content="&#xE916;" ToolTip="Focus and reminders" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabShelf" Style="{StaticResource TabButton}" Content="&#xE8B7;" ToolTip="File shelf" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabClip" Style="{StaticResource TabButton}" Content="&#xE77F;" ToolTip="Clipboard" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabSystem" Style="{StaticResource TabButton}" Content="&#xE9D9;" ToolTip="System" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabDev" Style="{StaticResource TabButton}" Content="&#xE943;" ToolTip="Dev: Claude Code, terminal, builds" Checked="Tab_Checked"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock x:Name="HdrWeather" FontSize="12" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <Border x:Name="HdrMic" Background="#33FFA726" CornerRadius="8" Padding="7,2" Margin="0,0,6,0" Visibility="Collapsed" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="6" Height="6" Fill="{StaticResource Orange}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="HdrMicText" FontSize="10" Foreground="{StaticResource Orange}" Margin="4,0,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="HdrCam" Background="#3334C759" CornerRadius="8" Padding="7,2" Margin="0,0,6,0" Visibility="Collapsed" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="6" Height="6" Fill="{StaticResource Green}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="HdrCamText" FontSize="10" Foreground="{StaticResource Green}" Margin="4,0,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="HdrTime" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <TextBlock x:Name="HdrBattGlyph" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                            <TextBlock x:Name="HdrBatt" FontSize="12" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <Button Style="{StaticResource IconButton}" Content="&#xE713;" FontSize="13" Width="28" Height="28" ToolTip="Settings" Click="Settings_Click"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1" ClipToBounds="True">
+                        <!-- Canvas so the 7-page strip isn't layout-clipped to one page width -->
+                        <Canvas>
+                        <StackPanel x:Name="PageStrip" Orientation="Horizontal">
+                            <StackPanel.RenderTransform><TranslateTransform x:Name="PageShift"/></StackPanel.RenderTransform>
+
+                            <!-- HOME -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="18,6,16,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="196"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid x:Name="MediaPanel">
+                                        <Border Width="124" Height="124" CornerRadius="22" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#1AFFFFFF">
+                                            <Border.Clip><RectangleGeometry Rect="0,0,124,124" RadiusX="22" RadiusY="22"/></Border.Clip>
+                                            <Grid>
+                                                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8D6;" FontSize="30" Foreground="#55FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                <Image x:Name="BigArt" Stretch="UniformToFill"/>
+                                            </Grid>
+                                        </Border>
+                                        <StackPanel Margin="140,10,14,0">
+                                            <Grid>
+                                                <TextBlock x:Name="BigApp" Style="{StaticResource Caption}" Foreground="{StaticResource Water}"/>
+                                                <StackPanel x:Name="BigEq" Orientation="Horizontal" HorizontalAlignment="Right" Height="14"/>
+                                            </Grid>
+                                            <TextBlock x:Name="BigTitle" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                                            <TextBlock x:Name="BigArtist" FontSize="12" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis"/>
+                                            <Grid x:Name="SeekBar" Height="16" Margin="0,10,0,0" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Seek_MouseDown">
+                                                <Border x:Name="ProgTrack" Height="4" Background="#33FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+                                                <Border x:Name="ProgFill" Height="4" Background="White" CornerRadius="2" HorizontalAlignment="Left" Width="0" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid>
+                                                <TextBlock x:Name="PosText" FontSize="10" Foreground="{StaticResource Dim}"/>
+                                                <TextBlock x:Name="DurText" FontSize="10" Foreground="{StaticResource Dim}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                                <Button Style="{StaticResource IconButton}" Content="&#xE892;" Click="Prev_Click"/>
+                                                <Button x:Name="PlayBtn" Style="{StaticResource PlayButton}" Content="&#xE768;" Margin="10,0" Click="Play_Click"/>
+                                                <Button Style="{StaticResource IconButton}" Content="&#xE893;" Click="Next_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel x:Name="ClockPanel" VerticalAlignment="Center" Margin="6,0,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="BigClock" FontSize="56" FontWeight="Light" Margin="-3,0,0,0"/>
+                                        <TextBlock x:Name="BigDate" FontSize="14" Foreground="{StaticResource Dim}"/>
+                                        <TextBlock x:Name="WeatherLine" FontSize="13" Margin="0,10,0,0" Foreground="#D9FFFFFF"/>
+                                        <TextBlock Text="Nothing playing" FontSize="11" Foreground="{StaticResource Faint}" Margin="0,10,0,0"/>
+                                    </StackPanel>
+
+                                    <Border Grid.Column="1" Background="{StaticResource Card}" CornerRadius="24">
+                                        <StackPanel Margin="10,8,10,8" VerticalAlignment="Center">
+                                            <TextBlock x:Name="PetSpeech" FontSize="11" Foreground="{StaticResource Dim}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            <pets:PetView x:Name="PetCard" Width="84" Height="84" Margin="0,2,0,0" Cursor="Hand" MouseLeftButtonUp="Pet_Poke"/>
+                                            <TextBlock x:Name="WaterAmount" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                            <Grid Height="4" Margin="18,5,18,8">
+                                                <Border x:Name="HomeWaterTrack" Background="#22FFFFFF" CornerRadius="2"/>
+                                                <Border x:Name="HomeWaterFill" Background="{StaticResource Water}" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <Button x:Name="CardDrinkBtn" Style="{StaticResource AccentButton}" Padding="12,4" Click="Drink_Click"/>
+                                                <Button Style="{StaticResource GlyphPill}" Content="&#xE7A7;" Margin="6,0,0,0" ToolTip="Undo last drink" Click="Undo_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+
+                            <!-- WATER + PET -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="16,4,16,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="178"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="168"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Background="{StaticResource Card}" CornerRadius="24">
+                                        <StackPanel Margin="12,8,12,10" VerticalAlignment="Center">
+                                            <pets:PetView x:Name="PetBig" Width="112" Height="112" Cursor="Hand" MouseLeftButtonUp="Pet_Poke"/>
+                                            <TextBlock x:Name="PetStageText" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                            <Grid Height="4" Margin="8,5,8,4">
+                                                <Border x:Name="StageTrack" Background="#22FFFFFF" CornerRadius="2"/>
+                                                <Border x:Name="StageFill" Background="#B388FF" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
+                                            </Grid>
+                                            <TextBlock x:Name="PetStageSub" FontSize="10" Foreground="{StaticResource Dim}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Margin="14,0,10,0" VerticalAlignment="Center">
+                                        <TextBlock Text="TODAY" Style="{StaticResource Caption}"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                                            <TextBlock x:Name="WaterBig" FontSize="24" FontWeight="SemiBold"/>
+                                            <TextBlock x:Name="WaterPace" FontSize="11" Foreground="{StaticResource Dim}" VerticalAlignment="Bottom" Margin="8,0,0,5"/>
+                                        </StackPanel>
+                                        <Grid Height="6" Margin="0,4,0,8">
+                                            <Border x:Name="WaterTrack" Background="#22FFFFFF" CornerRadius="3"/>
+                                            <Border x:Name="WaterPaceMark" Width="2" Background="#88FFFFFF" HorizontalAlignment="Left" Margin="0,-2"/>
+                                            <Border x:Name="WaterFill" Background="{StaticResource Water}" CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
+                                        </Grid>
+                                        <WrapPanel x:Name="CupChips"/>
+                                        <WrapPanel x:Name="TypeChips" Margin="0,4,0,0"/>
+                                        <Grid Margin="0,6,0,0">
+                                            <TextBlock x:Name="WaterLogText" FontSize="11" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" Margin="0,0,60,0" VerticalAlignment="Center"/>
+                                            <Button Style="{StaticResource PillButton}" Content="Undo" Padding="10,3" HorizontalAlignment="Right" Click="Undo_Click"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Border Grid.Column="2" Background="{StaticResource Card}" CornerRadius="20">
+                                        <StackPanel Margin="12,10,12,10">
+                                            <TextBlock Text="LAST 7 DAYS" Style="{StaticResource Caption}"/>
+                                            <Canvas x:Name="WeekChart" Height="70" Margin="0,8,0,4"/>
+                                            <Grid x:Name="WeekLabels" Height="12"/>
+                                            <TextBlock x:Name="StreakText" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                            <TextBlock x:Name="BadgeText" FontSize="10" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+
+                            <!-- FOCUS + REMINDERS -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="18,6,16,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="214"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Width="146" Height="146" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                        <Ellipse Stroke="#26FFA726" StrokeThickness="9"/>
+                                        <Path x:Name="FocusRing" Stroke="{StaticResource Orange}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <TextBlock x:Name="FocusTime" Text="25:00" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                            <TextBlock x:Name="FocusSub" Text="ready" FontSize="11" Foreground="{StaticResource Dim}" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0,10,0">
+                                        <TextBlock Text="FOCUS" Style="{StaticResource Caption}" Margin="0,0,0,8"/>
+                                        <WrapPanel x:Name="FocusPresets">
+                                            <Button Style="{StaticResource PillButton}" Content="5m" Tag="5" Margin="0,0,5,5" Click="TimerPreset_Click"/>
+                                            <Button Style="{StaticResource PillButton}" Content="15m" Tag="15" Margin="0,0,5,5" Click="TimerPreset_Click"/>
+                                            <Button Style="{StaticResource PillButton}" Content="25m" Tag="25" Margin="0,0,5,5" Click="TimerPreset_Click"/>
+                                            <Button Style="{StaticResource PillButton}" Content="45m" Tag="45" Margin="0,0,5,5" Click="TimerPreset_Click"/>
+                                            <Button Style="{StaticResource PillButton}" Content="60m" Tag="60" Margin="0,0,5,5" Click="TimerPreset_Click"/>
+                                        </WrapPanel>
+                                        <StackPanel x:Name="FocusControls" Orientation="Horizontal" Visibility="Collapsed" Margin="0,2,0,0">
+                                            <Button x:Name="FocusPauseBtn" Style="{StaticResource AccentButton}" Content="Pause" Click="TimerPause_Click"/>
+                                            <Button Style="{StaticResource PillButton}" Content="Stop" Margin="6,0,0,0" Click="TimerStop_Click"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="FocusStats" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="2" Background="{StaticResource Card}" CornerRadius="20">
+                                        <StackPanel Margin="12,10,12,10">
+                                            <TextBlock Text="REMIND ME" Style="{StaticResource Caption}"/>
+                                            <TextBox x:Name="ReminderInput" Style="{StaticResource IslandTextBox}" Margin="0,6,0,6" Tag="e.g. call mom 20m, then Enter"
+                                                     PreviewMouseDown="ReminderInput_PreviewMouseDown" KeyDown="ReminderInput_KeyDown" LostKeyboardFocus="ReminderInput_LostFocus"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Style="{StaticResource PillButton}" Content="10m" Tag="10" Padding="9,3" Click="ReminderAdd_Click"/>
+                                                <Button Style="{StaticResource PillButton}" Content="30m" Tag="30" Padding="9,3" Margin="4,0" Click="ReminderAdd_Click"/>
+                                                <Button Style="{StaticResource PillButton}" Content="1h" Tag="60" Padding="9,3" Click="ReminderAdd_Click"/>
+                                            </StackPanel>
+                                            <StackPanel x:Name="ReminderList" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+
+                            <!-- SHELF -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="18,6,18,14">
+                                    <Grid x:Name="ShelfEmpty">
+                                        <Rectangle Stroke="#40FFFFFF" StrokeThickness="1.5" StrokeDashArray="5 4" RadiusX="20" RadiusY="20"/>
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE896;" FontSize="26" Foreground="{StaticResource Dim}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Drop files here" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,8,0,2"/>
+                                            <TextBlock Text="They wait on the shelf until you drag them out" FontSize="11" Foreground="{StaticResource Dim}" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid x:Name="ShelfFull" Visibility="Collapsed">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <ScrollViewer VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" local:SmoothScroll.Enabled="True">
+                                            <WrapPanel x:Name="ShelfPanel"/>
+                                        </ScrollViewer>
+                                        <Grid Grid.Row="1" Margin="0,6,0,0">
+                                            <TextBlock x:Name="ShelfCount" FontSize="11" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Text="Drag out to use · double-click to open"/>
+                                            <Button Style="{StaticResource PillButton}" Content="Clear shelf" HorizontalAlignment="Right" Padding="10,3" Click="ShelfClear_Click"/>
+                                        </Grid>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+
+                            <!-- CLIPBOARD -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="18,4,18,14">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="RECENT COPIES · click to copy again · kept in memory only" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                        <Button Style="{StaticResource PillButton}" Content="Clear" HorizontalAlignment="Right" Padding="10,3" Click="ClipClear_Click"/>
+                                    </Grid>
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" local:SmoothScroll.Enabled="True">
+                                        <StackPanel x:Name="ClipList"/>
+                                    </ScrollViewer>
+                                    <TextBlock x:Name="ClipEmpty" Grid.Row="1" Text="Copy some text and it shows up here" FontSize="12" Foreground="{StaticResource Faint}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Grid>
+
+                            <!-- SYSTEM -->
+                            <Grid Width="600" Height="218">
+                                <UniformGrid Columns="4" Margin="14,6,14,14">
+                                    <Border Background="{StaticResource Card}" CornerRadius="20" Margin="4,0">
+                                        <Grid Margin="14,12">
+                                            <StackPanel>
+                                                <TextBlock Text="CPU" Style="{StaticResource Caption}"/>
+                                                <TextBlock x:Name="SysCpu" FontSize="26" FontWeight="SemiBold" Text="--"/>
+                                            </StackPanel>
+                                            <Polyline x:Name="SysCpuGraph" Stroke="{StaticResource Water}" StrokeThickness="2" VerticalAlignment="Bottom" Height="60" Stretch="None" StrokeLineJoin="Round"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Background="{StaticResource Card}" CornerRadius="20" Margin="4,0">
+                                        <StackPanel Margin="14,12">
+                                            <TextBlock Text="MEMORY" Style="{StaticResource Caption}"/>
+                                            <TextBlock x:Name="SysRam" FontSize="26" FontWeight="SemiBold" Text="--"/>
+                                            <TextBlock x:Name="SysRamSub" FontSize="11" Foreground="{StaticResource Dim}"/>
+                                            <Grid Height="6" Margin="0,14,0,0">
+                                                <Border x:Name="SysRamTrack" Background="#22FFFFFF" CornerRadius="3"/>
+                                                <Border x:Name="SysRamFill" Background="#B388FF" CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
+                                            </Grid>
+                                            <TextBlock x:Name="SysDisk" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,14,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{StaticResource Card}" CornerRadius="20" Margin="4,0">
+                                        <Grid Margin="14,12">
+                                            <StackPanel>
+                                                <TextBlock Text="NETWORK" Style="{StaticResource Caption}"/>
+                                                <TextBlock x:Name="SysDown" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                                <TextBlock x:Name="SysUp" FontSize="12" Foreground="{StaticResource Dim}"/>
+                                            </StackPanel>
+                                            <Polyline x:Name="SysNetGraph" Stroke="{StaticResource Green}" StrokeThickness="2" VerticalAlignment="Bottom" Height="60" Stretch="None" StrokeLineJoin="Round"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Background="{StaticResource Card}" CornerRadius="20" Margin="4,0">
+                                        <StackPanel Margin="14,12">
+                                            <TextBlock Text="POWER" Style="{StaticResource Caption}"/>
+                                            <TextBlock x:Name="SysBatt" FontSize="26" FontWeight="SemiBold" Text="--"/>
+                                            <TextBlock x:Name="SysBattSub" FontSize="11" Foreground="{StaticResource Dim}" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="SysUptime" FontSize="11" Foreground="{StaticResource Dim}" Margin="0,14,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+                            </Grid>
+
+                            <!-- DEV: live activities from Claude Code / terminal / builds -->
+                            <Grid Width="600" Height="218">
+                                <Grid Margin="18,4,18,14">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="LIVE · Claude Code, terminal commands, builds" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ApiStatus" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" local:SmoothScroll.Enabled="True">
+                                        <StackPanel x:Name="DevList"/>
+                                    </ScrollViewer>
+                                    <StackPanel x:Name="DevEmpty" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                        <TextBlock Text="Nothing running" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Claude Code sessions, long terminal commands and builds show up here" FontSize="11" Foreground="{StaticResource Dim}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                        <TextBlock Text="Set up hooks: windows\hooks\README.md" FontSize="11" Foreground="{StaticResource Faint}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                        </Canvas>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
