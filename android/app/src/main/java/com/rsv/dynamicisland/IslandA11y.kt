@@ -42,7 +42,12 @@ class IslandA11y : AccessibilityService() {
         bound = false
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    /** Only window changes are delivered, and only the package name is looked at: payment apps → step aside. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        if (PaymentMode.isPaymentApp(this, pkg)) PaymentMode.enter(this, pkg)
+    }
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {

@@ -62,6 +62,38 @@ class IslandService : Service(), IslandView.Host {
     private val btNames = HashMap<String, String>()
     private val btSeen = HashMap<String, Long>()
 
+    // ---- auto payment mode: hidden + accessibility off while a payment/bank app is open ----------------
+
+    @Volatile var paymentPaused = false
+        private set
+
+    private val payPoll = object : Runnable {
+        override fun run() {
+            if (!paymentPaused) return
+            PaymentMode.check(this@IslandService)
+            if (paymentPaused) main.postDelayed(this, 1500)
+        }
+    }
+
+    fun pauseForPayment() {
+        main.post {
+            paymentPaused = true
+            syncVisibility()
+            if (isForeground) updateNotification()
+            main.removeCallbacks(payPoll)
+            main.postDelayed(payPoll, 1500)
+        }
+    }
+
+    fun resumeAfterPayment() {
+        main.post {
+            paymentPaused = false
+            main.removeCallbacks(payPoll)
+            if (root == null) rebuildWindow() else syncVisibility()
+            if (isForeground) updateNotification()
+        }
+    }
+
     /** Bound by IslandA11y so the island lives as long as the accessibility service, with no notification. */
     override fun onBind(intent: Intent?): IBinder = android.os.Binder()
 
@@ -85,6 +117,8 @@ class IslandService : Service(), IslandView.Host {
         super.onCreate()
         running = this
         startedAt = System.currentTimeMillis()
+        // Restarted while a payment app was open: stay hidden and keep watching for when it closes.
+        if (Prefs.get(this).getBoolean(Prefs.PAY_ACTIVE, false)) { paymentPaused = true; main.postDelayed(payPoll, 1500) }
         prefs = Prefs.get(this)
         updateForeground()
         if (!prefs.getBoolean(Prefs.AUTOFIT_DONE, false)) autoFit(this)
@@ -199,10 +233,11 @@ class IslandService : Service(), IslandView.Host {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val paused = paymentPaused
         return Notification.Builder(this, App.CH_ISLAND)
             .setSmallIcon(R.drawable.ic_stat_island)
-            .setContentTitle("Island is on")
-            .setContentText("💧 ${Water.todayMl(this)} / ${Water.goal(prefs)} ml today")
+            .setContentTitle(if (paused) "Island paused for payment" else "Island is on")
+            .setContentText(if (paused) "Back when you leave the payment app" else "💧 ${Water.todayMl(this)} / ${Water.goal(prefs)} ml today")
             .setOngoing(true)
             .setShowWhen(false)
             .setContentIntent(open)
@@ -280,7 +315,7 @@ class IslandService : Service(), IslandView.Host {
 
     private fun syncVisibility() {
         val r = root
-        val want = r != null && !landscape
+        val want = r != null && !landscape && !paymentPaused
         if (want && !attached) {
             try {
                 wm?.addView(r, params)

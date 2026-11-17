@@ -32,6 +32,7 @@
 - [Privacy](#privacy)
 - [Project layout](#project-layout)
 - [Notes &amp; credits](#notes--credits)
+- [License](#license)
 
 ---
 
@@ -118,6 +119,23 @@ drag files onto it for the shelf · **Ctrl+Alt+W** log a drink · **Ctrl+Alt+I**
 4. If the pill doesn't sit perfectly around your camera: **Island** tab → *Auto-fit to camera*, or adjust the position/size sliders.
 
 > After updating the app, some phones switch its accessibility service off — re-enable it if the island drops under the status bar.
+
+#### Auto payment mode (GPay, Paytm, bank apps)
+
+Many payment and banking apps refuse to run while *any* third-party accessibility service is on, and some also
+block screen overlays. With **Auto payment mode** the island steps aside: when a chosen payment app opens it hides
+and switches its own accessibility service off; when you leave that app (or lock the phone) it switches it back on
+and returns.
+
+1. Grant two permissions once (they have no on-phone screen), with the phone connected over USB/wireless debugging:
+   ```
+   adb shell pm grant com.rsv.dynamicisland android.permission.WRITE_SECURE_SETTINGS
+   adb shell appops set com.rsv.dynamicisland GET_USAGE_STATS allow
+   ```
+2. Island tab → **Payment apps** → **Choose** and switch on your payment/bank apps (common ones are pre-selected).
+
+If an app still complains the very first time (some check the instant they open), go back and open it again —
+by then the island has stepped aside.
 
 ---
 
@@ -252,3 +270,10 @@ Per-platform notes: [`windows/README.md`](windows/README.md) · [`android/README
 - App logo designed with [Google Stitch](https://stitch.withgoogle.com). Weather by [Open-Meteo](https://open-meteo.com). PIN-code lookup via India Post and [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org).
 - Phone sync rides on [TwinDesk](https://github.com/InukaAsith/TwinDesk)'s shared-folder feature.
 - Windows notification peeks read Windows' local notification database (there's no public API for unpackaged apps), so a future Windows update could change it; the island would simply stop showing toasts.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 DevPsycho-07. Third-party libraries, data services and trademarks are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

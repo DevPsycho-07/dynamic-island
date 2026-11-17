@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Dynamic Island</string>
-    <string name="a11y_description">Lets Dynamic Island draw its pill on top of the status bar, around the camera, so you can tap it. It does not read your screen or what you type.</string>
+    <string name="a11y_description">Lets Dynamic Island draw its pill on top of the status bar, around the camera, so you can tap it. It only notices which app is open, so it can step aside in payment and banking apps. It does not read your screen or what you type.</string>
 </resources>

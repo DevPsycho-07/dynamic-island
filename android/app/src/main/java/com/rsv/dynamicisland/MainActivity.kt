@@ -591,6 +591,24 @@ class MainActivity : Activity() {
             hscroll(actions),
         ))
 
+        // Payment & bank apps block accessibility services and overlays: let the island step aside.
+        col.addView(section("Payment apps"))
+        val paySub = tv("", 12, Ui.DIM).apply { setPadding(dp(16), 0, dp(16), dp(12)) }
+        fun loadPay() {
+            val n = PaymentMode.apps(this).count { isInstalled(it) }
+            paySub.text = when {
+                !PaymentMode.canSwitch(this) -> "Needs a one-time permission over adb (see README → Auto payment mode)."
+                else -> "$n app${if (n == 1) "" else "s"} selected. While one is open the island hides and turns its accessibility off; it comes back when you leave."
+            }
+        }
+        loadPay()
+        reloaders += { loadPay() }
+        col.addView(card(
+            toggleRow("Auto payment mode", "Step aside in GPay, Paytm, bank apps… so they don't block", Prefs.F_AUTO_PAY, true) { loadPay() },
+            row("Choose apps", "Pick which apps count as payment apps", pill("Choose", Ui.CHIP, Color.WHITE) { showPaymentPicker { loadPay() } }),
+            paySub,
+        ))
+
         col.addView(section("Live activities"))
         col.addView(card(
             toggleRow("Now playing", "Album art, visualizer and controls", Prefs.F_MEDIA, true) {},
@@ -999,6 +1017,116 @@ class MainActivity : Activity() {
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    private fun isInstalled(pkg: String) = try { packageManager.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+
+    /**
+     * Full-screen dark picker: every launchable app with its icon and a switch, a search box,
+     * chosen apps first. Saves to PaymentMode on Done.
+     */
+    private fun showPaymentPicker(onDone: () -> Unit) {
+        val chosen = PaymentMode.apps(this).toMutableSet()
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Ui.BG)
+            setPadding(dp(16), dp(20), dp(16), dp(12))
+        }
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) }
+        titles.addView(tv("Payment apps", 22, Color.WHITE, bold = true))
+        titles.addView(tv("The island steps aside while these are open", 13, Ui.DIM))
+        header.addView(titles)
+        header.addView(pill("Done", Ui.ACCENT, Color.BLACK) {
+            PaymentMode.setApps(this, chosen)
+            dialog.dismiss()
+            onDone()
+        })
+        root.addView(header)
+
+        val search = android.widget.EditText(this).apply {
+            hint = "Search apps"
+            setHintTextColor(Ui.DIM)
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            isSingleLine = true
+            background = rounded(Ui.CARD, 14)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14); bottomMargin = dp(10) }
+        }
+        root.addView(search)
+
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+            isVerticalScrollBarEnabled = true
+            addView(list)
+        }
+        root.addView(scroll)
+        val loading = tv("Loading apps…", 14, Ui.DIM).apply { setPadding(dp(8), dp(16), 0, 0) }
+        list.addView(loading)
+
+        class AppRow(val pkg: String, val label: String, val view: View)
+        val rows = ArrayList<AppRow>()
+
+        fun render(query: String) {
+            list.removeAllViews()
+            val q = query.trim().lowercase()
+            val shown = rows.filter { q.isEmpty() || it.label.lowercase().contains(q) || it.pkg.contains(q) }
+                .sortedWith(compareBy({ it.pkg !in chosen }, { it.label.lowercase() }))
+            var group: View? = null
+            for (r in shown) {
+                (r.view.parent as? android.view.ViewGroup)?.removeView(r.view)
+                list.addView(r.view)
+                group = r.view
+            }
+            if (group == null) list.addView(tv("No apps match", 14, Ui.DIM).apply { setPadding(dp(8), dp(16), 0, 0) })
+        }
+
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { if (rows.isNotEmpty()) render(s?.toString() ?: "") }
+        })
+
+        // Load apps (labels + icons) off the main thread.
+        Thread {
+            val pm = packageManager
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val apps = pm.queryIntentActivities(intent, 0)
+                .distinctBy { it.activityInfo.packageName }
+                .filter { it.activityInfo.packageName != packageName }
+                .map { Triple(it.activityInfo.packageName, it.loadLabel(pm).toString(), it.loadIcon(pm)) }
+            runOnUiThread {
+                for ((pkg, label, icon) in apps) {
+                    val r = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(10), dp(8), dp(6), dp(8))
+                    }
+                    r.addView(android.widget.ImageView(this).apply {
+                        setImageDrawable(icon)
+                        layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(12) }
+                    })
+                    val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) }
+                    names.addView(tv(label, 15, Color.WHITE))
+                    names.addView(tv(pkg, 11, Ui.DIM))
+                    r.addView(names)
+                    val t = ToggleView(this).apply {
+                        set(pkg in chosen)
+                        onChange = { on -> if (on) chosen.add(pkg) else chosen.remove(pkg) }
+                    }
+                    r.addView(t)
+                    r.setOnClickListener { t.set(pkg !in chosen, animate = true, notify = true) }
+                    rows.add(AppRow(pkg, label, r))
+                }
+                render(search.text?.toString() ?: "")
+            }
+        }.start()
+
+        dialog.setContentView(root)
+        dialog.show()
+    }
 
     companion object {
         private const val REQ_TREE = 7

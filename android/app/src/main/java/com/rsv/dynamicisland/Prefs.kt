@@ -78,6 +78,10 @@ object Prefs {
     const val F_RINGER = "f_ringer"
     const val F_DANCE = "f_dance"
     const val F_DOCK = "f_dock"
+    const val F_AUTO_PAY = "f_auto_pay"
+    const val PAY_ACTIVE = "pay_active"
+    const val PAY_APP = "pay_app"
+    const val PAY_APPS = "pay_apps"
     const val F_MEDIA = "f_media"
 
     fun on(p: SharedPreferences, key: String) = p.getBoolean(key, true)
