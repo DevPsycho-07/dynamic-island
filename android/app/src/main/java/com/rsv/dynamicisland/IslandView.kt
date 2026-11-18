@@ -51,8 +51,12 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         fun openApp()
         fun send(pi: PendingIntent?)
         fun setFocusable(focus: Boolean)
-        /** Pull down the system notification shade (a swipe down that started on the island). */
+        /** Pull down the system notification shade (a swipe down that started left of the camera). */
         fun openShade()
+        /** Pull down quick settings (a swipe down that started right of the camera). */
+        fun openQuickSettings()
+        /** [pkg] is the app on screen right now (and the phone is unlocked). */
+        fun inFront(pkg: String?): Boolean
     }
 
     /** The real text box lives in [IslandRoot]; this is how the island drives it. */
@@ -79,7 +83,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     enum class Glyph { HEADPHONES, WATCH, BLUETOOTH, CAMERA, MIC, BELL, BELL_OFF, VIBRATE, CHECK, CROSS, STAR }
 
     private enum class Act {
-        PLAY_PAUSE, NEXT, PREV, DRINK, UNDO, SNOOZE, POKE, ADD100, ADD250, ADD500, CYCLE_TYPE,
+        PLAY_PAUSE, NEXT, PREV, DRINK, UNDO, SNOOZE, POKE, ADD_CUP, CYCLE_TYPE,
         T5, T15, T25, T45, T_ADD1, T_CANCEL, T_ADD5, T_DISMISS, T_PAUSE, T_RESUME,
         PAGE, COPY, REPLY, SEND, CALL_END, CALL_SPEAKER, CALL_ANSWER
     }
@@ -346,6 +350,8 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
                 switchAt = SystemClock.uptimeMillis()
                 slideDir = if (layout.page && l.page) pendingSlide else 0
                 pendingSlide = 0
+                // Into the dock: start the docked-view hold (not on the very first layout: start invisible).
+                if (l == Layout.DOCK) dockSince = if (cw == 0f) 0L else switchAt
             }
             layout = l
             tw = s[0]; th = s[1]; tr = s[2]; tt = top
@@ -433,7 +439,9 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         IslandTimer.active(app) -> Content.TIMER
         on(Prefs.F_LIVE) && LiveHub.nav() != null -> Content.NAV
         // Docked: paused music doesn't keep the pill open (still reachable on the Media page).
-        on(Prefs.F_MEDIA) && (if (dockOn()) MediaHub.current?.playing == true else MediaHub.showing()) -> Content.MEDIA
+        // Nor does music from the app you're looking at (YouTube open → no YouTube pill on top of it).
+        on(Prefs.F_MEDIA) && (if (dockOn()) MediaHub.current?.playing == true else MediaHub.showing()) &&
+            !host.inFront(MediaHub.current?.pkg) -> Content.MEDIA
         on(Prefs.F_LIVE) && LiveHub.progressItem() != null -> Content.LIVE
         else -> Content.IDLE
     }
@@ -501,8 +509,32 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
 
     private fun dotCount() = (if (camOn) 1 else 0) + (if (micOn) 1 else 0)
 
-    /** The dock sits on the camera's centre, which is the compact pill's vertical centre. */
-    private fun topOf(l: Layout, s: FloatArray): Float = if (l == Layout.DOCK) (compactH - s[1]) / 2f else 0f
+    /**
+     * The dock sits on the camera's centre, which is the compact pill's vertical centre — except a U ring
+     * (notch phones), which hangs from the top edge of the window like the notch itself.
+     */
+    private fun topOf(l: Layout, s: FloatArray): Float = when {
+        l != Layout.DOCK -> 0f
+        ringOn() && ringNotch() -> 0f
+        else -> ((compactH - s[1]) / 2f).coerceAtLeast(0f)
+    }
+
+    // ---- camera ring (Island settings → Camera ring)
+    private fun ringOn() = prefs.getBoolean(Prefs.RING_ON, true)
+    private fun ringNotch() = prefs.getInt(Prefs.RING_SHAPE, 0) == 1
+    private fun ringW() = dp(prefs.getInt(Prefs.RING_W, Prefs.DEF_RING_W))
+    private fun ringH() = dp(prefs.getInt(Prefs.RING_H, Prefs.DEF_RING_H))
+    private fun ringT() = dp(prefs.getInt(Prefs.RING_T, Prefs.DEF_RING_T)).coerceAtLeast(dp(1))
+
+    /** Outer radius of the U's bottom corners (ring radius + half the line), so the black body hugs the ring. */
+    private fun notchCorner() = dp(prefs.getInt(Prefs.RING_R, Prefs.DEF_RING_R)) + ringT() / 2f
+
+    /** [width, height] of the docked shape: the ring's box when the ring is on, else a disc over the punch hole. */
+    private fun dockBox(): FloatArray = when {
+        !ringOn() -> dockD().let { floatArrayOf(it, it) }
+        ringNotch() -> floatArrayOf(ringW(), ringH())
+        else -> floatArrayOf(ringW(), ringW())
+    }
 
     private fun screenW(): Float {
         val m = resources.displayMetrics
@@ -518,21 +550,26 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         fun x(extra: Float) = floatArrayOf(full, h + extra, xr)
         return when (l) {
             Layout.DOCK -> {
-                val d = dockD()
+                val b = dockBox()
                 val n = dotCount()
-                floatArrayOf(if (n == 0) d else d + 2f * (dp(5) + n * dp(9)), d, d / 2f)
+                floatArrayOf(if (n == 0) b[0] else b[0] + 2f * (dp(5) + n * dp(9)), b[1], min(b[0], b[1]) / 2f)
             }
             Layout.IDLE_C -> c(idleW + dp(56))
             Layout.MEDIA_C -> c(idleW + dp(84))
             Layout.TIMER_C -> c(idleW + dp(70))
             Layout.CALL_C -> c(idleW + dp(110))
-            Layout.LIVE_C -> c(idleW + if (LiveHub.top()?.nav == true) dp(140) else dp(76))
+            Layout.LIVE_C -> c(idleW + LiveHub.top().let { when {
+                it == null -> dp(76)
+                it.nav || it.status -> dp(140)
+                it.chrono -> dp(96)
+                else -> dp(76)
+            } })
             Layout.VOLUME -> c(idleW + dp(130))
             Layout.INFO, Layout.LOW_BATT -> c(idleW + dp(170))
             Layout.CHARGE -> floatArrayOf(min(full, idleW + dp(190)), h + dp(40), min(xr, (h + dp(40)) / 2))
             Layout.PAGE_LIVE -> x(dp(100))
             Layout.PAGE_MEDIA -> x(dp(150))
-            Layout.PAGE_DRIP -> x(dp(150))
+            Layout.PAGE_DRIP -> x(dp(150) + (flowChips(null, dripChips(), 0f, 0f, full - dp(34)) - 1) * CHIP_ROW)
             Layout.PAGE_TIMER -> x(dp(104))
             Layout.CALL_X -> x(dp(84))
             Layout.NOTIF -> x(if (notif?.otp != null || notif?.reply != null) dp(88) else dp(50))
@@ -698,12 +735,24 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
             postInvalidateOnAnimation()
             return
         }
+        if (layout == Layout.DOCK) {
+            // Docked view: sit still for the hold (one wake-up), then animate the fade.
+            val t = now - dockSince
+            if (t < DOCK_HOLD) { postDelayed(tickR, DOCK_HOLD - t); return }
+            if (t < DOCK_HOLD + DOCK_FADE) { postInvalidateOnAnimation(); return }
+        }
         val call = LiveHub.call
         val delay: Long = when (layout) {
             Layout.MEDIA_C, Layout.PAGE_MEDIA -> if (MediaHub.current?.playing == true) 66L else -1L
             Layout.TIMER_C, Layout.PAGE_TIMER -> if (IslandTimer.running(app)) 1000L - wall % 1000L + 5L else -1L
             Layout.CALL_C, Layout.CALL_X -> if (call?.incoming == true) 50L else 1000L - wall % 1000L + 5L
-            Layout.LIVE_C, Layout.PAGE_LIVE -> if (LiveHub.top()?.let { it.indeterminate && !it.nav } == true) 50L else -1L
+            Layout.LIVE_C, Layout.PAGE_LIVE -> LiveHub.top().let { item -> when {
+                item == null -> -1L
+                // Redraw exactly when the shown second changes.
+                item.chrono -> item.clockMs(wall).let { ms -> if (item.countDown) (ms % 1000L).let { if (it == 0L) 1000L else it } + 5L else 1000L - ms % 1000L + 5L }
+                item.indeterminate && !item.nav -> 50L
+                else -> -1L
+            } }
             Layout.IDLE_C -> if (mood() == Mood.SLEEPING) -1L else PetEngine.msToNextBlink(now)
             else -> -1L
         }
@@ -727,12 +776,27 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         val cx = width / 2f
         pill.set(cx - cw / 2f, ct, cx + cw / 2f, ct + ch)
         val r = min(cr, ch / 2f).coerceAtLeast(0f)
-        c.drawRoundRect(pill, r, r, black)
-
+        // Docked: the docked view (body + water ring) stays a few seconds after the island closes, then fades to
+        // invisible. It's still there to tap.
+        val body = if (layout == Layout.DOCK) dockAlpha(now) else 1f
         clip.reset()
-        clip.addRoundRect(pill, r, r, Path.Direction.CW)
+        if (layout == Layout.DOCK && ringOn() && ringNotch()) {
+            // U notch: flat top flush with the screen edge, bottom corners matching the ring's (rounded top
+            // corners here are what used to shave the U's ends into points).
+            val br = min(notchCorner(), min(ch, cw / 2f))
+            clip.addRoundRect(pill, floatArrayOf(0f, 0f, 0f, 0f, br, br, br, br), Path.Direction.CW)
+        } else {
+            clip.addRoundRect(pill, r, r, Path.Direction.CW)
+        }
+        if (body > 0f) {
+            black.alpha = (255 * body).toInt()
+            c.drawPath(clip, black)
+            black.alpha = 255
+        }
+
         c.save()
-        c.clipPath(clip)
+        // Docked: no clip — the ring sits on the shape's edge and a (non-antialiased) clip would chip it.
+        if (layout != Layout.DOCK) c.clipPath(clip)
         hits.clear()
         val sliding = slideDir != 0 && now - switchAt < SLIDE_MS
         val e = ease(((now - switchAt) / SLIDE_MS.toFloat()).coerceIn(0f, 1f))
@@ -760,6 +824,15 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     }
 
     private fun ease(t: Float) = 1f - (1f - t) * (1f - t) * (1f - t)
+
+    /** When the island last went back to the dock (0 = already invisible, e.g. at start-up). */
+    private var dockSince = 0L
+
+    /** Docked view: fully shown for [DOCK_HOLD] after the island closes, then fades out over [DOCK_FADE]. */
+    private fun dockAlpha(now: Long): Float {
+        val t = now - dockSince
+        return if (t < DOCK_HOLD) 1f else (1f - (t - DOCK_HOLD).toFloat() / DOCK_FADE).coerceIn(0f, 1f)
+    }
 
     private fun drawContent(c: Canvas, l: Layout, r: RectF, alpha: Float, record: Boolean, dx: Float) {
         val layer = alpha < 0.99f
@@ -799,17 +872,24 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     }
 
     /**
-     * Docked: only the camera shows. A 1.5 dp water-blue hairline between the lens and the
-     * disc's edge shows today's progress; privacy dots sit just right of the lens.
+     * Docked (idle): nothing shows but the camera itself — tap it to open. Optional extras: the water
+     * ring traced around the camera (Camera ring settings) and the privacy dots just right of it.
      */
     private fun drawDock(c: Canvas, r: RectF) {
-        val d = r.height()
+        val b = dockBox()
         val cx = r.centerX()
-        val cy = r.top + d / 2f
-        val rad = d / 2f - dp(0.75f)
-        // Starts at 90° (bottom, 6 o'clock) and sweeps clockwise: up the left side, over the top, down the right.
-        ring(c, cx, cy, rad, dp(1.5f), 0x553A6F85, BLUE, waterFrac(), start = 90f)
-        var x = cx + d / 2f + dp(5) + dp(3)
+        val cy = r.top + b[1] / 2f
+        if (ringOn()) {
+            // Fades with the docked view — except while the app is open, so you can line the ring up.
+            val fade = if (host.inFront(app.packageName)) 1f else dockAlpha(SystemClock.uptimeMillis())
+            if (fade > 0f) {
+                val layer = fade < 0.99f
+                if (layer) c.saveLayerAlpha(cx - b[0], r.top - dp(4), cx + b[0], r.top + b[1] + dp(4), (fade * 255).toInt())
+                drawCameraRing(c, cx, r.top, b[0], b[1])
+                if (layer) c.restore()
+            }
+        }
+        var x = cx + b[0] / 2f + dp(8)
         if (camOn) {
             fillP.color = GREEN
             c.drawCircle(x, cy, dp(3), fillP)
@@ -818,6 +898,51 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         if (micOn) {
             fillP.color = ORANGE
             c.drawCircle(x, cy, dp(3), fillP)
+        }
+    }
+
+    private val ringPath = Path()
+    private val ringSeg = Path()
+    private val ringMeasure = android.graphics.PathMeasure()
+
+    /**
+     * Today's water around the camera, filling ANTICLOCKWISE from 12 o'clock: a circle for a punch hole, or a
+     * U for a notch (from its top-left end, down, along the bottom and up the right). Gone once the goal is
+     * met — except while the app is open, so you can line it up with the camera.
+     */
+    private fun drawCameraRing(c: Canvas, cx: Float, top: Float, w: Float, h: Float) {
+        val frac = waterFrac()
+        val tuning = host.inFront(app.packageName)
+        if (frac >= 1f && !tuning) return
+        val shown = frac.coerceIn(0f, 1f)
+        val sw = ringT()
+        strokeP.strokeWidth = sw
+        ringPath.reset()
+        if (!ringNotch()) {
+            val rad = (w - sw) / 2f
+            tmp.set(cx - rad, top + h / 2f - rad, cx + rad, top + h / 2f + rad)
+            ringPath.addArc(tmp, -90f, -359.99f) // anticlockwise from the top
+        } else {
+            val half = (w - sw) / 2f
+            val l = cx - half
+            val rt = cx + half
+            val btm = top + h - sw / 2f
+            val rad = dp(prefs.getInt(Prefs.RING_R, Prefs.DEF_RING_R)).coerceIn(0f, min(half, btm - top))
+            ringPath.moveTo(l, top)
+            ringPath.lineTo(l, btm - rad)
+            if (rad > 0f) ringPath.arcTo(RectF(l, btm - 2 * rad, l + 2 * rad, btm), 180f, -90f, false)
+            ringPath.lineTo(rt - rad, btm)
+            if (rad > 0f) ringPath.arcTo(RectF(rt - 2 * rad, btm - 2 * rad, rt, btm), 90f, -90f, false)
+            ringPath.lineTo(rt, top)
+        }
+        strokeP.color = RING_TRACK
+        c.drawPath(ringPath, strokeP)
+        if (shown > 0.005f) {
+            ringMeasure.setPath(ringPath, false)
+            ringSeg.reset()
+            ringMeasure.getSegment(0f, ringMeasure.length * shown, ringSeg, true)
+            strokeP.color = if (frac >= 1f) GREEN else BLUE
+            c.drawPath(ringSeg, strokeP)
         }
     }
 
@@ -921,12 +1046,17 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         val cy = h / 2f
         val s = h - dp(8)
         drawIcon(c, item.icon, r.left + dp(5), dp(4), s)
-        if (item.nav) {
+        if (item.nav || item.status) {
             tRight.color = Color.WHITE
             tRight.textSize = dp(13)
             val maxW = r.right - dp(12) - (r.centerX() + dp(18))
             val e = TextUtils.ellipsize(item.title, tRight, maxW, TextUtils.TruncateAt.END)
             c.drawText(e, 0, e.length, r.right - dp(12), cy + dp(4.5f), tRight)
+        } else if (item.chrono) {
+            // Timer / stopwatch / recording: the running clock, like the call timer.
+            tRight.color = Color.WHITE
+            tRight.textSize = dp(13.5f)
+            c.drawText(clock(item.clockMs()), r.right - dp(13), cy + dp(4.8f), tRight)
         } else {
             val rr = h * 0.27f
             val rx = r.right - h / 2f - dp(3)
@@ -1145,7 +1275,10 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         text(c, item.title, x0, top + dp(24), tMain, right - x0)
         tSub.textSize = dp(13)
         if (item.text.isNotEmpty()) text(c, item.text, x0, top + dp(43), tSub, right - x0)
-        if (!item.nav) {
+        if (item.chrono) {
+            tMain.textSize = dp(22)
+            c.drawText(clock(item.clockMs()), x0, top + dp(74), tMain)
+        } else if (!item.nav && !item.status) {
             val by = top + dp(58)
             if (item.indeterminate) {
                 spinner(c, r.left + dp(38), by + dp(3), dp(8), BLUE)
@@ -1226,18 +1359,41 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         } else {
             text(c, Water.paceLine(app), x0, top + dp(64), tSub, right - x0)
         }
-        // Quick add + drink type
-        val by = top + dp(92)
-        var bx = r.left + dp(16)
+        flowChips(c, dripChips(), r.left + dp(16), top + dp(92), right)
+    }
+
+    private class Chip(val label: String, val style: Int, val act: Act, val arg: Int = 0)
+
+    /** Water page buttons, same as the laptop: every cup by name (the default one blue), drink type, undo. */
+    private fun dripChips(): List<Chip> {
+        val def = Water.cup(prefs)
         val cups = Water.cups(prefs)
-        for ((i, act) in listOf(Act.ADD100, Act.ADD250, Act.ADD500).withIndex()) {
-            val ml2 = cups.getOrNull(i)?.second ?: continue
-            bx += button(c, bx, by, "+$ml2", if (ml2 == Water.cup(prefs)) BTN_BLUE else BTN_GREY, act) + dp(6)
+        val list = ArrayList<Chip>(cups.size + 3)
+        if (cups.none { it.second == def }) list.add(Chip("+$def ml", BTN_BLUE, Act.DRINK))
+        for ((name, ml) in cups) {
+            list.add(if (ml == def) Chip("$name $ml", BTN_BLUE, Act.DRINK) else Chip("$name $ml", BTN_GREY, Act.ADD_CUP, ml))
         }
         val t = Water.drinkType(prefs)
-        val label = "${t.emoji} ${t.label}"
-        if (bx + buttonWidth(label) <= right) button(c, bx, by, label, BTN_GREY, Act.CYCLE_TYPE)
+        list.add(Chip("${t.emoji} ${t.label}", BTN_GREY, Act.CYCLE_TYPE))
+        list.add(Chip("Undo", BTN_GREY, Act.UNDO))
+        return list
     }
+
+    /** Lays chips left to right from [x0], wrapping before [right]. Draws when [c] is set; returns the row count. */
+    private fun flowChips(c: Canvas?, chips: List<Chip>, x0: Float, y0: Float, right: Float): Int {
+        var x = x0
+        var y = y0
+        var rows = 1
+        for (ch in chips) {
+            val w = buttonWidth(ch.label)
+            if (x > x0 && x + w > right) { x = x0; y += CHIP_ROW; rows++ }
+            if (c != null) button(c, x, y, ch.label, ch.style, ch.act, ch.arg)
+            x += w + dp(6)
+        }
+        return rows
+    }
+
+    private val CHIP_ROW get() = dp(38)
 
     private fun drawTimerPage(c: Canvas, r: RectF) {
         val top = compactH
@@ -1394,7 +1550,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         return tBtn.measureText(label) + dp(26)
     }
 
-    private fun button(c: Canvas, x: Float, y: Float, label: String, style: Int, act: Act): Float {
+    private fun button(c: Canvas, x: Float, y: Float, label: String, style: Int, act: Act, arg: Int = 0): Float {
         val h = dp(30)
         val w = buttonWidth(label)
         tmp.set(x, y, x + w, y + h)
@@ -1408,7 +1564,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         c.drawRoundRect(tmp, h / 2f, h / 2f, fillP)
         tBtn.color = if (style == BTN_GREY || style == BTN_RED) Color.WHITE else Color.BLACK
         c.drawText(label, tmp.centerX(), tmp.centerY() - (tBtn.ascent() + tBtn.descent()) / 2f, tBtn)
-        if (recording) hits.add(Hit(RectF(x - dp(4), y - dp(6), x + w + dp(4), y + h + dp(6)), act))
+        if (recording) hits.add(Hit(RectF(x - dp(4), y - dp(6), x + w + dp(4), y + h + dp(6)), act, arg))
         return w
     }
 
@@ -1747,14 +1903,15 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
                 touchAt = SystemClock.uptimeMillis()
                 val dx = e.x - downX
                 val dy = e.y - downY
-                // A pull down that starts on the island is the user reaching for the notification
-                // shade: hand it to the system straight away, like the real status-bar gesture.
+                // A pull down that starts on the island strip is the user reaching for the status bar:
+                // hand it to the system straight away, like the real gesture. Left of the camera opens
+                // notifications, right of it quick settings (the split shade most phones use).
                 if (!shadeFired && !longFired && peek != Peek.REPLY && dy > dp(12) && dy > abs(dx)) {
                     shadeFired = true
                     moved = true
                     removeCallbacks(longPress)
                     if (peek != Peek.NONE || expanded) collapse()
-                    host.openShade()
+                    if (downX < width / 2f) host.openShade() else host.openQuickSettings()
                     return true
                 }
                 if (!moved && hypot(dx, dy) > dp(12)) {
@@ -1799,8 +1956,9 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
             return
         }
         if (layout == Layout.DOCK) {
+            // One tap opens it fully (there's no hover on a phone to do the in-between step).
             performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            setPeek(Peek.IDLE, 3000)
+            expand()
             return
         }
         if (!pill.contains(x, y) && (peek != Peek.NONE || expanded)) {
@@ -1863,9 +2021,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
                 collapse()
             }
             Act.POKE -> PetEngine.poke()
-            Act.ADD100 -> Water.drink(app, Water.cups(prefs).getOrNull(0)?.second ?: 100)
-            Act.ADD250 -> Water.drink(app, Water.cups(prefs).getOrNull(1)?.second ?: 250)
-            Act.ADD500 -> Water.drink(app, Water.cups(prefs).getOrNull(2)?.second ?: 500)
+            Act.ADD_CUP -> if (arg > 0) Water.drink(app, arg)
             Act.CYCLE_TYPE -> {
                 val next = (Water.drinkType(prefs).ordinal + 1) % Drink.entries.size
                 prefs.edit().putInt(Prefs.DRINK_TYPE, next).apply()
@@ -1943,11 +2099,14 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         private const val K = 300f   // spring stiffness
         private const val C = 26f    // damping (a touch under critical -> small bounce)
         private const val SLIDE_MS = 260L
+        private const val DOCK_HOLD = 4000L  // docked view stays this long after the island closes…
+        private const val DOCK_FADE = 500L   // …then fades to invisible over this long
         const val BLUE = 0xFF4FC3F7.toInt()
         const val ORANGE = 0xFFFF9F0A.toInt()
         const val GREEN = 0xFF30D158.toInt()
         const val RED = 0xFFFF453A.toInt()
         const val GREY = 0xFF9A9A9A.toInt()
+        private const val RING_TRACK = 0x553A6F85
         private const val BTN_GREY = 0
         private const val BTN_BLUE = 1
         private const val BTN_ORANGE = 2

@@ -159,6 +159,11 @@ class NotifListener : NotificationListenerService() {
         return CallInfo(sbn.key, name, started, incoming, end, speaker, answer, n.contentIntent)
     }
 
+    /**
+     * Anything an app keeps "live" in its notification: navigation, progress, a running clock (timer,
+     * stopwatch, recorder, workout), Android 16 promoted live updates, and ongoing order / ride / score
+     * notifications from delivery, cab and sports apps. Plain background-service notifications don't count.
+     */
     private fun buildLive(sbn: StatusBarNotification, n: Notification): LiveItem? {
         if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return null
         val ex = n.extras
@@ -166,26 +171,40 @@ class NotifListener : NotificationListenerService() {
         val max = ex.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
         val prog = ex.getInt(Notification.EXTRA_PROGRESS, 0)
         val indet = ex.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false)
-        val nav = n.category == "navigation" || (sbn.isOngoing && sbn.packageName in NAV_PKGS)
-        val hasProgress = (max > 0 && prog in 0 until max) || (indet && sbn.isOngoing)
-        if (!nav && !hasProgress) return null
+        val ongoing = sbn.isOngoing
+        val nav = n.category == Notification.CATEGORY_NAVIGATION || (ongoing && sbn.packageName in NAV_PKGS)
+        val hasProgress = (max > 0 && prog in 0 until max) || (indet && ongoing)
+        val promoted = ongoing && ((n.flags and FLAG_PROMOTED_ONGOING) != 0 || ex.getBoolean(EXTRA_REQUEST_PROMOTED, false))
+        val liveApp = sbn.packageName in LIVE_PKGS || n.channelId in LIVE_CHANNELS
+        val background = n.category == Notification.CATEGORY_SERVICE || n.category == Notification.CATEGORY_SYSTEM
+        val clock = ongoing && (promoted || liveApp || !background) &&
+            ex.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false) && n.`when` > 0
+        val status = !nav && !hasProgress && !clock && ongoing &&
+            (promoted || liveApp || n.category in LIVE_CATEGORIES)
+        if (!nav && !hasProgress && !clock && !status) return null
         val title = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
         val text = (ex.getCharSequence(Notification.EXTRA_TEXT) ?: ex.getCharSequence(Notification.EXTRA_SUB_TEXT))
             ?.toString()?.trim().orEmpty()
-        if (title.isEmpty() && text.isEmpty()) return null
+        val label = label(sbn.packageName)
+        // Custom-layout notifications (some delivery apps) carry no text: the app name still says what it is.
+        if (title.isEmpty() && text.isEmpty() && !clock && !status) return null
         val old = LiveHub.get(sbn.key)
         return LiveItem(
             key = sbn.key,
-            appLabel = label(sbn.packageName),
+            appLabel = label,
             icon = old?.icon ?: icon(sbn.packageName, n),
-            title = title.ifEmpty { text },
+            title = title.ifEmpty { text.ifEmpty { label } },
             text = if (title.isEmpty()) "" else text,
             progress = prog,
             max = max,
-            indeterminate = indet || max <= 0,
+            indeterminate = hasProgress && (indet || max <= 0),
             nav = nav,
             open = n.contentIntent,
             updatedAt = System.currentTimeMillis(),
+            pkg = sbn.packageName,
+            chronoBase = if (clock && !hasProgress && !nav) n.`when` else 0L,
+            countDown = ex.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN, false),
+            status = status,
         )
     }
 
@@ -246,6 +265,39 @@ class NotifListener : NotificationListenerService() {
     companion object {
         @Volatile
         var connected = false
+
+        /** Android 16 "live updates" (promoted ongoing notifications): flag + the extra apps set to ask for it. */
+        private const val FLAG_PROMOTED_ONGOING = 0x00040000
+        private const val EXTRA_REQUEST_PROMOTED = "android.requestPromotedOngoing"
+
+        /** Categories that are live by nature when ongoing (stopwatch, workout, location sharing). */
+        private val LIVE_CATEGORIES = setOf("stopwatch", "workout", "location_sharing", Notification.CATEGORY_PROGRESS)
+
+        /** Apps whose ongoing notification is a live order / ride / score (they rarely flag it any other way). */
+        private val LIVE_PKGS = setOf(
+            // food & groceries
+            "com.application.zomato", "in.swiggy.android", "com.grofers.customerapp", "com.zeptoconsumerapp",
+            "com.bigbasket.mobileapp", "com.dunzo.user", "com.Dominos", "com.ubercab.eats", "com.dd.doordash",
+            "com.grubhub.android", "com.instacart.client", "com.global.foodpanda.android", "com.deliveroo.orderapp",
+            // rides
+            "com.ubercab", "com.olacabs.customer", "com.rapido.passenger", "in.juspay.nammayatri",
+            "sinet.startup.inDriver", "com.lyft.android", "ee.mtakso.client", "com.theporter.android.customerapp",
+            // shopping deliveries
+            "in.amazon.mShop.android.shopping", "com.amazon.mShop.android.shopping", "com.flipkart.android", "com.myntra.android",
+            // live scores
+            "com.cricbuzz.android", "com.july.cricinfo",
+            // clocks (running timer / stopwatch) — many draw their own layout without the standard clock flag
+            "com.transsion.deskclock", "com.google.android.deskclock", "com.android.deskclock",
+            "com.sec.android.app.clockpackage", "com.coloros.alarmclock", "com.oneplus.deskclock",
+            "com.oplus.alarmclock", "com.miui.clock",
+            // voice / screen recorders
+            "com.transsion.soundrecorder", "com.google.android.apps.recorder", "com.sec.android.app.voicenote",
+            "com.android.soundrecorder", "com.coloros.soundrecorder", "com.oneplus.soundrecorder",
+            "com.oplus.soundrecorder", "com.miui.screenrecorder", "com.transsion.screenrecord",
+        )
+
+        /** Live channels inside apps that are otherwise not live (e.g. System UI's own screen recorder). */
+        private val LIVE_CHANNELS = setOf("screen_record")
 
         private val NAV_PKGS = setOf(
             "com.google.android.apps.maps", "com.google.android.apps.mapslite", "com.waze",

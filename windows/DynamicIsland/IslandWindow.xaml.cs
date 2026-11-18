@@ -15,7 +15,7 @@ using Microsoft.Win32;
 namespace DynamicIsland
 {
     enum View { Dock, Peek, Media, Timer, Activity, Level, Message, Notify, Alert, Expanded }
-    enum Tab { Home, Water, Focus, Shelf, Clip, System, Dev }
+    enum Tab { Home, Water, Focus, Shelf, Clip, System, Dev, Tools }
 
     /// <summary>
     /// The island. This file: window plumbing, the notch shape, view switching, hover/dock/expand.
@@ -38,6 +38,7 @@ namespace DynamicIsland
         readonly DispatcherTimer _collapse = new() { Interval = TimeSpan.FromMilliseconds(700) };
         readonly DispatcherTimer _hoverIn = new() { Interval = TimeSpan.FromMilliseconds(110) };
         readonly DispatcherTimer _hoverOut = new() { Interval = TimeSpan.FromMilliseconds(450) };
+        readonly DispatcherTimer _dockFade = new() { Interval = TimeSpan.FromSeconds(4) }; // docked view → invisible
 
         readonly Dictionary<View, (FrameworkElement el, double w, double h)> _views;
         View _view = View.Dock;
@@ -81,6 +82,15 @@ namespace DynamicIsland
                 v.el.Visibility = k == View.Dock ? Visibility.Visible : Visibility.Hidden;
                 v.el.IsHitTestVisible = k == View.Dock;
             }
+            Shape.Opacity = 0; // starts docked and already faded (see Show)
+            DockFill.Opacity = 0;
+            _dockFade.Tick += (_, _) =>
+            {
+                _dockFade.Stop();
+                if (_view != View.Dock) return;
+                Shape.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(500)));
+                DockFill.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(500)));
+            };
 
             Pill.SizeChanged += (_, _) => UpdateShape();
             Pill.MouseEnter += (_, _) => OnHover(true);
@@ -239,7 +249,7 @@ namespace DynamicIsland
         {
             if (_timerEnd != null || _timerPausedLeft != null) return View.Timer;
             if (CurrentActivity() != null) return View.Activity;
-            if (_s.ShowMedia && _media?.Playing == true) return View.Media;
+            if (_s.ShowMedia && _media?.Playing == true && !_mediaInFront) return View.Media;
             if (_peeking) return View.Peek;
             return _s.DockWhenIdle ? View.Dock : View.Peek;
         }
@@ -261,6 +271,12 @@ namespace DynamicIsland
             // Window hugs the island: grow first (room for the animation), shrink after it settles.
             FitWindow(Math.Max(Pill.ActualWidth, w + 2 * e), Math.Max(Pill.ActualHeight, h));
             Morph(w + 2 * e, h, growing);
+            // The near-transparent HoverZone still catches the mouse once the docked view has faded.
+            // Docked view (bar + water line) stays a few seconds after closing, then fades to nothing.
+            Shape.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(90)));
+            DockFill.BeginAnimation(OpacityProperty, new DoubleAnimation(0.85, TimeSpan.FromMilliseconds(90)));
+            _dockFade.Stop();
+            if (v == View.Dock) _dockFade.Start();
 
             var prev = _view;
             _view = v;
@@ -411,7 +427,7 @@ namespace DynamicIsland
         {
             if (_expanded)
             {
-                if (Header.IsMouseOver) { SelectTab((Tab)Math.Clamp((int)_tab + (e.Delta < 0 ? 1 : -1), 0, 6)); e.Handled = true; }
+                if (Header.IsMouseOver) { SelectTab((Tab)Math.Clamp((int)_tab + (e.Delta < 0 ? 1 : -1), 0, (int)Tab.Tools)); e.Handled = true; }
                 else if (_tab == Tab.Home) _osd.NudgeVolume(e.Delta > 0 ? 0.04f : -0.04f);
                 return;
             }
@@ -475,14 +491,15 @@ namespace DynamicIsland
         {
             if (_views == null) return; // during InitializeComponent
             Tab t = sender == TabWater ? Tab.Water : sender == TabFocus ? Tab.Focus : sender == TabShelf ? Tab.Shelf
-                  : sender == TabClip ? Tab.Clip : sender == TabSystem ? Tab.System : sender == TabDev ? Tab.Dev : Tab.Home;
+                  : sender == TabClip ? Tab.Clip : sender == TabSystem ? Tab.System : sender == TabDev ? Tab.Dev
+                  : sender == TabTools ? Tab.Tools : Tab.Home;
             SelectTab(t);
         }
 
         void SelectTab(Tab t, bool animate = true)
         {
             _tab = t;
-            var rb = t switch { Tab.Water => TabWater, Tab.Focus => TabFocus, Tab.Shelf => TabShelf, Tab.Clip => TabClip, Tab.System => TabSystem, Tab.Dev => TabDev, _ => TabHome };
+            var rb = t switch { Tab.Water => TabWater, Tab.Focus => TabFocus, Tab.Shelf => TabShelf, Tab.Clip => TabClip, Tab.System => TabSystem, Tab.Dev => TabDev, Tab.Tools => TabTools, _ => TabHome };
             if (rb.IsChecked != true) rb.IsChecked = true;
             double x = -(int)t * 600;
             if (animate && !_s.ReduceMotion)
@@ -543,6 +560,7 @@ namespace DynamicIsland
             }
             if (_view == View.Peek) UpdatePeek();
             if (_view == View.Activity) UpdateActivityView();
+            if (!_hiddenForFullscreen) CheckMediaInFront();
 
             if (_ticks % 2 == 0)
             {

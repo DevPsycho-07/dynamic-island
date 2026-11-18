@@ -42,23 +42,24 @@
 
 | | |
 |---|---|
-| **Docked bar** | When idle the island shrinks to a thin bar at the top edge (water progress as a hairline). Hover to peek, click to open. The window hugs the island, so it never blocks clicks or screenshots. |
-| **Now playing** | Album art, title, equalizer bars driven by the real audio level, colour taken from the cover, click-to-seek, prev/play/next. Works with Spotify, browsers, Media Player — anything using Windows media controls. |
+| **Docked bar** | When the island closes it becomes a thin bar with today's water as a hairline, stays ~4 s, then fades away completely (only a dot shows while the mic / camera is in use). Hover to peek, click to open. The window hugs the island, so it never blocks clicks or screenshots. |
+| **Now playing** | Album art, title, equalizer bars driven by the real audio level, colour taken from the cover, click-to-seek, prev/play/next. Works with Spotify, browsers, Media Player — anything using Windows media controls. No pill while the player itself is the window in front (e.g. the YouTube tab you're watching). |
 | **Live peeks** | Volume, brightness, charging / low / full battery, energy saver, Bluetooth connect, microphone / camera in use, copied text, track changes. |
 | **Notifications** | Windows notifications peek into the island with the sending app's real icon. |
 | **Claude Code** | Live "Claude is working" pill per session (several sessions are told apart), "needs you" / "finished" peeks, and **Allow / Deny** for permission prompts right in the island. |
-| **7 tabs** | Home · Water & pet · Focus timer + reminders · File shelf (drag files in/out) · Clipboard history · System (CPU / RAM / network graphs) · Dev (Claude sessions, long terminal commands, builds). |
+| **8 tabs** | Home · Water & pet · Focus timer + reminders · File shelf (drag files in/out) · Clipboard history · System (CPU / RAM / network graphs) · Dev (Claude sessions, long terminal commands, builds) · Shortcuts. |
+| **Shortcuts** | Capture through Snipping Tool's own overlay, opened in the right mode: area, window, full screen, screen recording (copied to the clipboard; nothing saved). Everyday: emoji, clipboard history, show desktop, lock, Calculator, Notepad, Explorer, Downloads, Settings. Dev: Terminal (normal / admin), VS Code, Task Manager, environment variables, hosts file, Services, Registry, copy local IP. Right-click any of them to pin it to the **quick row** on the Home tab, one click away. |
 | **Polish** | Notch shape with curved ears, spring animations (or "reduce motion"), hides during fullscreen games/videos, custom dark settings window, Ctrl+Alt+W / Ctrl+Alt+I / Ctrl+Alt+V hotkeys. |
 
 ### Android (Kotlin, no AndroidX)
 
 | | |
 |---|---|
-| **Island around the camera** | Docks to just the punch-hole camera when idle (with a water-progress ring); expands into swipeable pages. |
-| **Live activities** | Music with controls, calls with a timer, downloads / progress rings, navigation next-turn, charging animation, focus timer. |
-| **Notifications** | Peeks with the app's icon, one-tap **Copy OTP**, and inline **reply**. |
-| **Status** | Bluetooth (with battery), camera / mic dots, volume, Silent / Vibrate / Ring. |
-| **Gestures** | Tap = peek / expand, long-press = open the app, swipe down = notification shade, swipe sideways = pages. |
+| **Island around the camera** | When it closes it docks onto the camera with a water ring traced around it (a circle for punch-holes or a U for notches, sized by you; fills anticlockwise from the top), stays ~4 s, then fades to nothing. Tap the camera to open it into swipeable pages. Lock screen: only while music / video plays (or always, if you choose); never on the always-on display. |
+| **Live activities** | Music with controls, calls with a timer, downloads / progress rings, navigation next-turn, timers / stopwatches / recorders, food & grocery deliveries, cab rides, live scores, Android 16 live updates, charging animation, focus timer. Nothing shows for the app you're already looking at. |
+| **Notifications** | Peeks with the app's icon, one-tap **Copy OTP**, and inline **reply**. Can replace the system pop-up so you don't see each one twice (needs the adb grant below). |
+| **Status** | Bluetooth (with battery), volume, Silent / Vibrate / Ring, optional camera / mic dots (off by default — Android shows its own). |
+| **Gestures** | Tap = expand, long-press = open the app, swipe down left of the camera = notifications, right of it = quick settings, swipe sideways = pages. |
 | **App** | Tabbed settings (Home · Water & pet · Island · Sync · Setup). |
 
 ---
@@ -136,6 +137,12 @@ and returns.
 
 If an app still complains the very first time (some check the instant they open), go back and open it again —
 by then the island has stepped aside.
+
+The same `WRITE_SECURE_SETTINGS` grant powers **Replace pop-up notifications** (Island tab, on by default): while
+the island is up, the system's heads-up banners are switched off so a notification only shows once, in the island
+(it still lands in the shade and on the lock screen). They come back in landscape, in payment mode and when the island
+is switched off. *Turn the island off before uninstalling*, or the pop-ups stay off until you run
+`adb shell settings put global heads_up_notifications_enabled 1`.
 
 ---
 

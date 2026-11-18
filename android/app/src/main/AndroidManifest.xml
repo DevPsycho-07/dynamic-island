@@ -30,6 +30,11 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- The home screen app, so going home counts as "the video app is in the background". -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <!-- TwinDesk's shared-folder DocumentsProvider (laptop sync). -->
         <provider android:authorities="com.twindesk.android.pcshare" />
     </queries>

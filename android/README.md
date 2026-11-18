@@ -49,7 +49,8 @@ gradlew.bat assembleRelease
 
 The APK lands at `app/build/outputs/apk/release/app-release.apk`. It's signed with the local debug key, for sideloading.
 
-Install: `adb install -r app/build/outputs/apk/release/app-release.apk`
+Install: `adb install -r app/build/outputs/apk/release/app-arm64-v8a-release.apk`
+(one APK per CPU type: `arm64-v8a` for almost every modern phone, `armeabi-v7a` for old 32-bit ones, `x86_64` for emulators, `universal` for any)
 Launch:  `adb shell am start -n com.rsv.dynamicisland/.MainActivity`
 
 ## Permissions (Set up card)

@@ -57,6 +57,81 @@ namespace DynamicIsland
             SetWindowLong(hwnd, GWL_EXSTYLE, on ? ex | WS_EX_NOACTIVATE : ex & ~WS_EX_NOACTIVATE);
         }
 
+        // ---------- keys / lock (Shortcuts tab) ----------
+
+        public const byte VK_SHIFT = 0x10, VK_LWIN = 0x5B, VK_SNAPSHOT = 0x2C, VK_OEM_PERIOD = 0xBE,
+                          VK_RETURN = 0x0D, VK_UP = 0x26, VK_DOWN = 0x28;
+
+        /// <summary>Press a key combo (all down in order, then up in reverse), e.g. Win+Shift+S.</summary>
+        public static void SendKeys(params byte[] keys)
+        {
+            static uint Ext(byte k) => k is VK_LWIN or VK_SNAPSHOT or VK_UP or VK_DOWN ? 1u : 0u; // KEYEVENTF_EXTENDEDKEY
+            foreach (var k in keys) keybd_event(k, 0, Ext(k), UIntPtr.Zero);
+            for (int i = keys.Length - 1; i >= 0; i--) keybd_event(keys[i], 0, Ext(keys[i]) | 2, UIntPtr.Zero); // KEYEVENTF_KEYUP
+        }
+
+        [DllImport("user32.dll")] public static extern bool LockWorkStation();
+
+        public static IntPtr ForegroundWindow() => GetForegroundWindow();
+
+        // ---------- which app is in front ----------
+
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr lParam);
+        [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, uint flags, System.Text.StringBuilder sb, ref uint size);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetApplicationUserModelId(IntPtr h, ref uint len, System.Text.StringBuilder sb);
+        const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        /// <summary>The focused window: its process name (no ".exe"), title, and AppUserModelId when it's a packaged app.</summary>
+        public sealed record ForegroundApp(uint Pid, string Process, string Title, string? Aumid);
+
+        public static ForegroundApp? GetForegroundApp()
+        {
+            try
+            {
+                var h = GetForegroundWindow();
+                if (h == IntPtr.Zero) return null;
+                GetWindowThreadProcessId(h, out uint pid);
+                var sb = new System.Text.StringBuilder(512);
+                GetWindowText(h, sb, sb.Capacity);
+                string title = sb.ToString();
+                var (proc, aumid) = ProcessInfo(pid);
+                if (proc.Equals("ApplicationFrameHost", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Store apps: the frame belongs to ApplicationFrameHost, the app itself is a child window's process.
+                    uint child = 0;
+                    EnumChildWindows(h, (w, _) =>
+                    {
+                        GetWindowThreadProcessId(w, out uint p);
+                        if (p != pid) { child = p; return false; }
+                        return true;
+                    }, IntPtr.Zero);
+                    if (child != 0) { pid = child; (proc, aumid) = ProcessInfo(pid); }
+                }
+                return new ForegroundApp(pid, proc, title, aumid);
+            }
+            catch { return null; }
+        }
+
+        static (string name, string? aumid) ProcessInfo(uint pid)
+        {
+            var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero) return ("", null);
+            try
+            {
+                var sb = new System.Text.StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                string name = QueryFullProcessImageName(h, 0, sb, ref size) ? System.IO.Path.GetFileNameWithoutExtension(sb.ToString()) : "";
+                var id = new System.Text.StringBuilder(256);
+                uint len = (uint)id.Capacity;
+                string? aumid = GetApplicationUserModelId(h, ref len, id) == 0 ? id.ToString() : null; // only packaged apps have one
+                return (name, aumid);
+            }
+            finally { CloseHandle(h); }
+        }
+
         delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
         [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);

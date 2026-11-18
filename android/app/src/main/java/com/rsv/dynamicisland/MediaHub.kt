@@ -24,6 +24,8 @@ object MediaHub {
         val speed: Float,
         val playing: Boolean,
         val sessionActivity: PendingIntent?,
+        /** The app playing it (e.g. com.google.android.youtube). */
+        val pkg: String,
     ) {
         fun position(): Long {
             if (!playing) return positionMs
@@ -117,6 +119,7 @@ object MediaHub {
             speed = st?.playbackSpeed?.takeIf { it > 0f } ?: 1f,
             playing = playing,
             sessionActivity = c.sessionActivity,
+            pkg = c.packageName.orEmpty(),
         )
         notifyListeners()
     }

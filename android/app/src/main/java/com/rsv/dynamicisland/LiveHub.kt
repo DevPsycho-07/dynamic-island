@@ -16,7 +16,11 @@ class CallInfo(
     val open: PendingIntent?,
 )
 
-/** A "live activity": an ongoing notification with progress, or turn-by-turn navigation. */
+/**
+ * A "live activity": an ongoing notification the island can show — progress (downloads, uploads),
+ * turn-by-turn navigation, a running clock (timer, stopwatch, recorder, workout), or a live status
+ * (food / grocery delivery, cab ride, live score, Android's own promoted "live updates").
+ */
 class LiveItem(
     val key: String,
     val appLabel: String,
@@ -29,8 +33,20 @@ class LiveItem(
     val nav: Boolean,
     val open: PendingIntent?,
     val updatedAt: Long,
+    val pkg: String = "",
+    /** Wall-clock base of a running chronometer (the notification's `when`), 0 = no clock. */
+    val chronoBase: Long = 0L,
+    /** The clock counts down to [chronoBase] (timer) instead of up from it (stopwatch, recording). */
+    val countDown: Boolean = false,
+    /** Text-only live status (order on the way, ride arriving…). */
+    val status: Boolean = false,
 ) {
     val frac: Float get() = if (max > 0) (progress.toFloat() / max).coerceIn(0f, 1f) else 0f
+    val chrono: Boolean get() = chronoBase > 0L
+
+    /** Running clock value in ms. */
+    fun clockMs(now: Long = System.currentTimeMillis()): Long =
+        (if (countDown) chronoBase - now else now - chronoBase).coerceAtLeast(0L)
 }
 
 /** Calls + live activities, fed by [NotifListener]. Main thread only. */
@@ -71,8 +87,11 @@ object LiveHub {
         notifyListeners()
     }
 
-    fun nav(): LiveItem? = items.values.filter { it.nav }.maxByOrNull { it.updatedAt }
-    fun progressItem(): LiveItem? = items.values.filter { !it.nav }.maxByOrNull { it.updatedAt }
+    /** Items from the app you're looking at stay off the island (set by IslandService). */
+    var hidden: (LiveItem) -> Boolean = { false }
+
+    fun nav(): LiveItem? = items.values.filter { it.nav && !hidden(it) }.maxByOrNull { it.updatedAt }
+    fun progressItem(): LiveItem? = items.values.filter { !it.nav && !hidden(it) }.maxByOrNull { it.updatedAt }
 
     /** Navigation wins (it's time-critical), otherwise the most recent progress item. */
     fun top(): LiveItem? = nav() ?: progressItem()

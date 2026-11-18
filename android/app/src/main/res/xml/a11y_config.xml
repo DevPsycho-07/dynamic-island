@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Window-change events only, and only their package name is used (to step aside in payment apps).
-     No screen content, no gestures, no key events. -->
+<!-- Window-change events only, and only their package / class name is used (to step aside in payment
+     apps, and to know which app is on screen). No screen content, no gestures, no key events. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"

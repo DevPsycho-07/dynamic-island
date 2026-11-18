@@ -16,6 +16,23 @@ object Prefs {
     const val AUTOFIT_DONE = "autofit_done"
     const val PEEK_NOTIFS = "peek_notifs"
     const val PEEK_CHARGING = "peek_charging"
+    /** Default off: on the lock screen the island only shows while music / video plays; never on the always-on display. */
+    const val LOCK_ALWAYS = "lock_always"
+    /** Default on: the island's peek replaces the system pop-up (see [HeadsUp]). */
+    const val REPLACE_POPUPS = "replace_popups"
+    const val HEADSUP_OFF_BY_US = "headsup_off_by_us"  // local state: we switched heads-up off and owe it back
+
+    // Camera ring: today's water traced around the camera while docked (off by default)
+    const val RING_ON = "ring_on"
+    const val RING_SHAPE = "ring_shape"      // 0 = circle (punch-hole), 1 = U (notch)
+    const val RING_W = "ring_w_dp"
+    const val RING_H = "ring_h_dp"           // U only: how deep the notch goes
+    const val RING_R = "ring_r_dp"           // U only: bottom corner radius
+    const val RING_T = "ring_t_dp"           // line thickness
+    const val DEF_RING_W = 26
+    const val DEF_RING_H = 20
+    const val DEF_RING_R = 12
+    const val DEF_RING_T = 2
 
     // Hydration
     const val WATER_ON = "water_on"

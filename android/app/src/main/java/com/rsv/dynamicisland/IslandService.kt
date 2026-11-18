@@ -160,6 +160,7 @@ class IslandService : Service(), IslandView.Host {
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
         MediaHub.addListener(dataListener)
         LiveHub.addListener(dataListener)
+        LiveHub.hidden = { inFront(it.pkg) }
         IslandBus.onNotification = notifListener
         Water.scheduleNext(this)
         IslandTimer.restore(this)
@@ -195,9 +196,11 @@ class IslandService : Service(), IslandView.Host {
         prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         MediaHub.removeListener(dataListener)
         LiveHub.removeListener(dataListener)
+        LiveHub.hidden = { false }
         if (IslandBus.onNotification === notifListener) IslandBus.onNotification = null
         removeWindow()
         root = null
+        HeadsUp.apply(this, false) // island gone: the system pop-ups come back
         super.onDestroy()
     }
 
@@ -313,19 +316,50 @@ class IslandService : Service(), IslandView.Host {
         syncVisibility()
     }
 
+    /** Keyguard showing, refreshed by [syncVisibility]. */
+    private var locked = false
+
+    /**
+     * Screen off / always-on display: never shown. Lock screen: only while music or video plays
+     * (unless "Show on lock screen" is on). Unlocked: always.
+     */
     private fun syncVisibility() {
         val r = root
-        val want = r != null && !landscape && !paymentPaused
+        locked = screenOn && keyguardLocked()
+        val lockOk = !locked || prefs.getBoolean(Prefs.LOCK_ALWAYS, false) ||
+            (Prefs.on(prefs, Prefs.F_MEDIA) && MediaHub.showing())
+        val want = r != null && !landscape && !paymentPaused && screenOn && lockOk
         if (want && !attached) {
             try {
                 wm?.addView(r, params)
                 attached = true
+                r?.island?.refresh(force = true)
             } catch (e: Exception) {
                 Log.w(TAG, "addView failed", e)
             }
         } else if (!want && attached) {
             removeWindow()
         }
+        // Island up (not landscape / payment mode) with peeks on: it replaces the system pop-ups.
+        // Not tied to screen / lock state — pop-ups don't show there anyway, and this keeps writes rare.
+        HeadsUp.apply(
+            this, r != null && !landscape && !paymentPaused &&
+                prefs.getBoolean(Prefs.PEEK_NOTIFS, true) && Prefs.on(prefs, Prefs.REPLACE_POPUPS)
+        )
+    }
+
+    /** The accessibility service saw a different app come to the front. */
+    fun onTopAppChanged() {
+        main.post { view?.refresh() }
+    }
+
+    /**
+     * [pkg] is the app on screen (and the phone is unlocked): its now-playing / live pill stays off the island
+     * until you leave it.
+     */
+    override fun inFront(pkg: String?): Boolean {
+        if (locked || pkg.isNullOrEmpty()) return false
+        return IslandA11y.topPackage == pkg
     }
 
     private fun removeWindow() {
@@ -379,18 +413,27 @@ class IslandService : Service(), IslandView.Host {
      * A swipe down that began on the island: open the real notification shade. The island
      * window sits above the status bar, so the system never sees that gesture itself.
      */
-    override fun openShade() {
+    override fun openShade() = pullDown(
+        android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS, "expandNotificationsPanel"
+    )
+
+    /** Same, for a swipe that began right of the camera: the quick settings / shortcuts panel. */
+    override fun openQuickSettings() = pullDown(
+        android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS, "expandSettingsPanel"
+    )
+
+    private fun pullDown(globalAction: Int, statusBarMethod: String) {
         val a11y = IslandA11y.instance
         if (a11y != null) {
             try {
-                if (a11y.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)) return
+                if (a11y.performGlobalAction(globalAction)) return
             } catch (_: Throwable) {
             }
         }
         try {
             @android.annotation.SuppressLint("WrongConstant")
             val sbm = getSystemService("statusbar")
-            sbm?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sbm)
+            sbm?.javaClass?.getMethod(statusBarMethod)?.invoke(sbm)
         } catch (_: Throwable) {
         }
     }
@@ -429,12 +472,17 @@ class IslandService : Service(), IslandView.Host {
 
     // ---- inputs ------------------------------------------------------------------------------
 
-    private val dataListener: () -> Unit = { view?.refresh() }
+    private val dataListener: () -> Unit = {
+        main.post {
+            syncVisibility() // music starting / stopping shows / hides the island on the lock screen
+            view?.refresh()
+        }
+    }
 
     private val notifListener: (PeekNotif) -> Unit = { n ->
         main.post {
             val v = view ?: return@post
-            if (!screenOn) return@post
+            if (!screenOn || !attached) return@post
             // On the lock screen, show who it's from but not what it says (and no code / reply).
             v.showNotification(if (keyguardLocked()) PeekNotif(n.key, n.appLabel, n.icon, n.appLabel, "New notification", null) else n)
         }
@@ -479,15 +527,19 @@ class IslandService : Service(), IslandView.Host {
         override fun onReceive(c: Context, i: Intent) {
             when (i.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    // Also fires when the always-on display takes over: the island leaves with the screen.
                     screenOn = false
                     view?.onScreenOff()
+                    syncVisibility()
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     screenOn = true
+                    syncVisibility()
                     tick.run()
                     Sync.requestNow(this@IslandService)
                 }
                 Intent.ACTION_USER_PRESENT -> {
+                    syncVisibility()
                     maybeAskForWater()
                     Sync.requestNow(this@IslandService)
                 }
@@ -600,13 +652,16 @@ class IslandService : Service(), IslandView.Host {
         cfg.clientAudioSource != 1999 && !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && cfg.isClientSilenced)
     } == true
 
+    /** Off by default: Android 12+ already shows its own green / orange dot in the status bar. */
+    private fun privacyOn() = prefs.getBoolean(Prefs.F_PRIVACY, false)
+
     private fun pushPrivacy() {
-        val on = Prefs.on(prefs, Prefs.F_PRIVACY)
+        val on = privacyOn()
         view?.setPrivacy(on && camsInUse.isNotEmpty(), on && micInUse)
     }
 
     private fun privacyPeek(camera: Boolean) {
-        if (!Prefs.on(prefs, Prefs.F_PRIVACY) || !screenOn || keyguardLocked() || !settled()) return
+        if (!privacyOn() || !screenOn || keyguardLocked() || !settled()) return
         if (camera) view?.showInfo(IslandView.Glyph.CAMERA, "Camera", "in use", IslandView.GREEN, 2200)
         else view?.showInfo(IslandView.Glyph.MIC, "Microphone", "in use", IslandView.ORANGE, 2200)
     }
@@ -656,6 +711,8 @@ class IslandService : Service(), IslandView.Host {
             Prefs.TIMER_DONE_AT -> v?.showTimerDone()
             Prefs.F_PRIVACY -> pushPrivacy()
             Prefs.ISLAND_ON -> if (!prefs.getBoolean(Prefs.ISLAND_ON, false)) { IslandA11y.instance?.releaseIsland(); stopSelf() }
+            Prefs.LOCK_ALWAYS, Prefs.F_MEDIA, Prefs.PEEK_NOTIFS, Prefs.REPLACE_POPUPS -> { syncVisibility(); v?.refresh() }
+            Prefs.HEADSUP_OFF_BY_US -> {}
             else -> v?.refresh()
         }
     }
@@ -665,6 +722,7 @@ class IslandService : Service(), IslandView.Host {
         override fun run() {
             main.removeCallbacks(this)
             if (!screenOn) return
+            syncVisibility() // catches an unlock / relock the broadcasts missed
             val end = IslandTimer.endAt(prefs)
             if (end != 0L && System.currentTimeMillis() >= end) IslandTimer.finish(this@IslandService)
             view?.refresh()

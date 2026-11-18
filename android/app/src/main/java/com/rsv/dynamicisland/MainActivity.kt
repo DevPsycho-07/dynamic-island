@@ -63,6 +63,7 @@ class MainActivity : Activity() {
     private lateinit var nextText: TextView
     private lateinit var snack: LinearLayout
     private lateinit var snackText: TextView
+    private lateinit var defaultCupBtn: TextView
     private val quickButtons = ArrayList<TextView>()
     private val typeChips = ArrayList<TextView>()
     private lateinit var timerText: TextView
@@ -197,8 +198,12 @@ class MainActivity : Activity() {
 
         col.addView(section("Add a drink"))
         val quick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(14), dp(12), dp(14), dp(6)) }
-        for (i in 0 until 4) {
-            val b = pill("", Ui.ACCENT, Color.BLACK) { Water.cups(prefs).getOrNull(i)?.let { add(it.second) } }
+        // Every cup by name (like the laptop); the default one is blue. If the default isn't one of the cups,
+        // it gets its own "+400 ml" button first.
+        defaultCupBtn = pill("", Ui.ACCENT, Color.BLACK) { add(Water.cup(prefs)) }
+        quick.addView(defaultCupBtn); quick.addView(space(8))
+        for (i in 0 until 5) {
+            val b = pill("", Ui.CHIP, Color.WHITE) { Water.cups(prefs).getOrNull(i)?.let { add(it.second) } }
             quickButtons += b
             quick.addView(b); quick.addView(space(8))
         }
@@ -301,11 +306,19 @@ class MainActivity : Activity() {
         statusText.text = "🔥 ${Water.streak(this)}-day streak   ❄️ ${Water.freezes(this)}   " +
             "🌸 ${Water.blooms(this)} goal days   · ${kind.stages[Water.stage(this)]}"
         pet.dancing = Prefs.on(prefs, Prefs.F_DANCE) && MediaHub.current?.playing == true
+        val def = Water.cup(prefs)
         val cups = Water.cups(prefs)
+        defaultCupBtn.text = "+$def ml"
+        defaultCupBtn.visibility = if (cups.any { it.second == def }) View.GONE else View.VISIBLE
         for ((i, b) in quickButtons.withIndex()) {
             val cup = cups.getOrNull(i)
             b.visibility = if (cup == null) View.GONE else View.VISIBLE
-            if (cup != null) b.text = "+${cup.second}"
+            if (cup != null) {
+                val isDefault = cup.second == def
+                b.text = "${cup.first} ${cup.second}"
+                b.background = pillBg(if (isDefault) Ui.ACCENT else Ui.CHIP)
+                b.setTextColor(if (isDefault) Color.BLACK else Color.WHITE)
+            }
         }
         val type = Water.drinkType(prefs)
         for ((i, chip) in typeChips.withIndex()) {
@@ -587,8 +600,40 @@ class MainActivity : Activity() {
         col.addView(card(
             row("Show the island", "Pill around the front camera", islandToggle),
             islandNote,
-            toggleRow("Dock when idle", "Shrinks to just the camera; tap it to peek", Prefs.F_DOCK, true) {},
+            toggleRow("Dock when idle", "Disappears into the camera; tap it to open", Prefs.F_DOCK, true) {},
+            toggleRow("Show on lock screen", "Off: only while music or video plays. Never on the always-on display", Prefs.LOCK_ALWAYS, false) {},
             hscroll(actions),
+        ))
+
+        // Today's water traced around the camera while docked. Shape it to your camera: circle for a
+        // punch hole, U for a notch. While this screen is open the ring always shows, to line it up.
+        col.addView(section("Camera ring"))
+        val shapeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(14), dp(10), dp(14), dp(6)) }
+        lateinit var circleChip: TextView
+        lateinit var notchChip: TextView
+        fun loadShape() {
+            val notch = prefs.getInt(Prefs.RING_SHAPE, 0) == 1
+            circleChip.background = pillBg(if (notch) Ui.CHIP else Ui.ACCENT)
+            circleChip.setTextColor(if (notch) Color.WHITE else Color.BLACK)
+            notchChip.background = pillBg(if (notch) Ui.ACCENT else Ui.CHIP)
+            notchChip.setTextColor(if (notch) Color.BLACK else Color.WHITE)
+        }
+        circleChip = pill("◯  Circle · punch-hole", Ui.CHIP, Color.WHITE) { prefs.edit().putInt(Prefs.RING_SHAPE, 0).apply(); loadShape() }
+        notchChip = pill("◡  U · notch", Ui.CHIP, Color.WHITE) { prefs.edit().putInt(Prefs.RING_SHAPE, 1).apply(); loadShape() }
+        shapeRow.addView(circleChip); shapeRow.addView(space(8)); shapeRow.addView(notchChip)
+        loadShape()
+        reloaders += { loadShape() }
+        col.addView(card(
+            toggleRow("Water ring around the camera", "Shows for a few seconds after the island closes, filling anticlockwise from the top; not once the goal is met", Prefs.RING_ON, true) {},
+            hscroll(shapeRow),
+            slider("Width", 8, 140, 1, Prefs.RING_W, Prefs.DEF_RING_W) { "$it dp" },
+            slider("Depth (U only)", 4, 80, 1, Prefs.RING_H, Prefs.DEF_RING_H) { "$it dp" },
+            slider("Corner roundness (U only)", 0, 40, 1, Prefs.RING_R, Prefs.DEF_RING_R) { "$it dp" },
+            slider("Thickness", 1, 6, 1, Prefs.RING_T, Prefs.DEF_RING_T) { "$it dp" },
+            tv("While this screen is open the ring always shows, so you can line it up with your camera. " +
+                "A U hangs from the island's top edge: for a notch set Position → Up / down to 0.", 12, Ui.DIM).apply {
+                setPadding(dp(16), dp(4), dp(16), dp(12))
+            },
         ))
 
         // Payment & bank apps block accessibility services and overlays: let the island step aside.
@@ -614,6 +659,9 @@ class MainActivity : Activity() {
             toggleRow("Now playing", "Album art, visualizer and controls", Prefs.F_MEDIA, true) {},
             toggleRow("Pet dances to music", "Bounces while something is playing", Prefs.F_DANCE, true) {},
             toggleRow("Notifications", "New notifications peek into the island", Prefs.PEEK_NOTIFS, true) {},
+            toggleRow("Replace pop-up notifications", "Hide the system's pop-up banner while the island shows the peek, so you don't see it twice", Prefs.REPLACE_POPUPS, true) {
+                if (Prefs.on(prefs, Prefs.REPLACE_POPUPS) && !HeadsUp.canControl(this)) toast("Needs the one-time adb permission (README → Auto payment mode)")
+            },
             toggleRow("Copy OTP codes", "\"Copy 482913\" button on code messages", Prefs.F_OTP, true) {},
             toggleRow("Inline reply", "Reply to WhatsApp / Telegram / SMS from the island", Prefs.F_REPLY, true) {},
             toggleRow("Calls", "Green pill with call timer, End / Speaker", Prefs.F_CALL, true) {},
@@ -626,7 +674,7 @@ class MainActivity : Activity() {
             toggleRow("Volume", "Island turns into a level bar when volume changes", Prefs.F_VOLUME, true) {},
             toggleRow("Ring / Vibrate / Silent", "Bell peek when the ringer mode changes", Prefs.F_RINGER, true) {},
             toggleRow("Battery and charging", "Liquid battery on plug-in, full and low", Prefs.PEEK_CHARGING, true) {},
-            toggleRow("Microphone and camera", "Orange / green dot while an app is using them", Prefs.F_PRIVACY, true) {},
+            toggleRow("Microphone and camera", "Orange / green dot while an app is using them (most phones already show one)", Prefs.F_PRIVACY, false) {},
         ))
 
         col.addView(section("Position & size"))
@@ -636,7 +684,7 @@ class MainActivity : Activity() {
             slider("Width", 80, 220, 2, Prefs.WIDTH, Prefs.DEF_WIDTH) { "$it dp" },
             slider("Height", 20, 44, 1, Prefs.HEIGHT, Prefs.DEF_HEIGHT) { "$it dp" },
         ))
-        col.addView(tv("Tap the island to open it, long-press to come here, swipe down on it for the notification shade.", 12, Ui.DIM).apply {
+        col.addView(tv("Tap the island to open it, long-press to come here. Swipe down left of the camera for notifications, right of it for quick settings.", 12, Ui.DIM).apply {
             setPadding(dp(8), dp(14), dp(8), 0)
         })
         return col

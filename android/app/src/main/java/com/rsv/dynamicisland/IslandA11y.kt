@@ -42,11 +42,36 @@ class IslandA11y : AccessibilityService() {
         bound = false
     }
 
-    /** Only window changes are delivered, and only the package name is looked at: payment apps → step aside. */
+    /**
+     * Only window changes are delivered, and only the package / class name is looked at:
+     * payment apps → step aside; and which app is on screen, so the island doesn't show the
+     * now-playing pill for the very app you are watching (YouTube open → no YouTube pill).
+     */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         if (PaymentMode.isPaymentApp(this, pkg)) PaymentMode.enter(this, pkg)
+        val cls = event.className?.toString() ?: return
+        // Dialogs, menus, the keyboard, the notification shade and our own overlay also fire this event;
+        // only a real activity means a different app is now in front.
+        if (pkg != topPackage && isActivity(pkg, cls)) {
+            topPackage = pkg
+            IslandService.running?.onTopAppChanged()
+        }
+    }
+
+    private val activityCache = HashMap<String, Boolean>()
+
+    private fun isActivity(pkg: String, cls: String): Boolean {
+        val key = "$pkg/$cls"
+        activityCache[key]?.let { return it }
+        val yes = try {
+            packageManager.getActivityInfo(ComponentName(pkg, cls), 0)
+            true
+        } catch (_: Exception) { false }
+        if (activityCache.size > 400) activityCache.clear()
+        activityCache[key] = yes
+        return yes
     }
     override fun onInterrupt() {}
 
@@ -69,6 +94,11 @@ class IslandA11y : AccessibilityService() {
     companion object {
         @Volatile
         var instance: IslandA11y? = null
+
+        /** Package of the app currently on screen (null until the first app switch is seen). */
+        @Volatile
+        var topPackage: String? = null
+            private set
 
         fun isEnabled(ctx: Context): Boolean {
             val flat = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false

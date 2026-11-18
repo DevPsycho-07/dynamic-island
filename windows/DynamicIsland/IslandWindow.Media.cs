@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -40,6 +41,7 @@ namespace DynamicIsland
         {
             bool artChanged = !ReferenceEquals(info?.Art, _media?.Art);
             _media = info;
+            _mediaInFront = MediaAppInFront();
             if (info == null) { ShowNoMedia(); RevertToBaseUnlessTransient(); return; }
 
             MiniTitle.Text = info.Title;
@@ -55,7 +57,7 @@ namespace DynamicIsland
             if (artChanged) ApplyArt(info.Art);
             UpdateProgress();
 
-            if (newTrack && _mediaSeen && info.Playing && _s.ShowMedia && !_expanded && _alert == null)
+            if (newTrack && _mediaSeen && info.Playing && _s.ShowMedia && !_expanded && _alert == null && !_mediaInFront)
             {
                 _mediaSeen = true;
                 ShowMessage("", WhiteB, info.Title, info.Artist, "", 2.6, info.Art);
@@ -63,6 +65,42 @@ namespace DynamicIsland
             }
             _mediaSeen = true;
             RevertToBaseUnlessTransient();
+        }
+
+        // ---------- the player is the window you're looking at ----------
+
+        bool _mediaInFront;
+
+        static readonly HashSet<string> Browsers = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "arc", "chromium", "librewolf", "waterfox", "zen", "thorium", "floorp",
+        };
+
+        /// <summary>
+        /// True when the app playing is the focused window (YouTube tab in front, Spotify focused…): then the
+        /// island shows no now-playing pill for it — only once it's in the background.
+        /// Browsers count only when the playing tab is the one showing (its title is the window title).
+        /// </summary>
+        bool MediaAppInFront()
+        {
+            var m = _media;
+            if (m == null || !m.Playing) return false;
+            var fg = Native.GetForegroundApp();
+            if (fg == null || fg.Pid == (uint)Environment.ProcessId || fg.Process.Length == 0) return false;
+            if (fg.Aumid != null && fg.Aumid.Equals(m.SourceId, StringComparison.OrdinalIgnoreCase)) return true;
+            bool titleShown = m.Title.Length >= 3 && fg.Title.Contains(m.Title, StringComparison.OrdinalIgnoreCase);
+            if (Browsers.Contains(fg.Process)) return titleShown;
+            if (fg.Process.Length >= 3 && m.SourceId.Contains(fg.Process, StringComparison.OrdinalIgnoreCase)) return true;
+            return titleShown;
+        }
+
+        /// <summary>Heartbeat: switching to / away from the player shows or hides its pill.</summary>
+        void CheckMediaInFront()
+        {
+            bool now = _s.ShowMedia && MediaAppInFront();
+            if (now == _mediaInFront) return;
+            _mediaInFront = now;
+            if (!_expanded) RevertToBaseUnlessTransient();
         }
 
         void RevertToBaseUnlessTransient()

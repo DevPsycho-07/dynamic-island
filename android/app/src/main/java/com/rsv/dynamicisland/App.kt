@@ -25,6 +25,9 @@ class App : Application() {
             }
         )
         Water.ensureInit(this)
+        // The process was killed while the island had the system pop-ups switched off and the island
+        // isn't coming back: hand them back. (If it is coming back, IslandService takes over again.)
+        if (!Prefs.get(this).getBoolean(Prefs.ISLAND_ON, false)) HeadsUp.apply(this, false)
     }
 
     companion object {

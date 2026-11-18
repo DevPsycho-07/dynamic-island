@@ -42,6 +42,9 @@ namespace DynamicIsland
         public bool SyncEnabled { get; set; } = true;
         public string SyncFolder { get; set; } = "";   // empty = %USERPROFILE%\MacShare\DynamicIsland
 
+        // Shortcuts pinned to the Home tab's quick row (ids from IslandWindow.Shortcuts.cs; right-click a tile to pin)
+        public List<string> QuickShortcuts { get; set; } = new() { "area", "window", "record", "emoji", "terminal", "calc" };
+
         // Shelf
         public List<string> ShelfFiles { get; set; } = new();
 

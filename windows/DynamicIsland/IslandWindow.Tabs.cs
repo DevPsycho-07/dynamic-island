@@ -26,6 +26,7 @@ namespace DynamicIsland
             RefreshClipList();
             RefreshReminders();
             RefreshDevList();
+            InitShortcuts();
         }
 
         // ================= FOCUS TIMER =================

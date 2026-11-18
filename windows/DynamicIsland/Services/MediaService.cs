@@ -8,8 +8,9 @@ using GsmtcSession = Windows.Media.Control.GlobalSystemMediaTransportControlsSes
 
 namespace DynamicIsland.Services
 {
+    /// <param name="SourceId">The player's AppUserModelId (e.g. "Chrome", "Spotify.exe", "Microsoft.ZuneMusic_…!Microsoft.ZuneMusic").</param>
     public sealed record MediaInfo(string Title, string Artist, string App, bool Playing, BitmapImage? Art,
-                                   TimeSpan Position, TimeSpan Duration, DateTimeOffset PositionStamp);
+                                   TimeSpan Position, TimeSpan Duration, DateTimeOffset PositionStamp, string SourceId);
 
     /// <summary>Now-playing info from any app that talks to Windows media controls (Spotify, browsers, etc.).</summary>
     public sealed class MediaService
@@ -83,7 +84,7 @@ namespace DynamicIsland.Services
                 bool playing = pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
                 var info = new MediaInfo(title, artist, PrettyApp(s.SourceAppUserModelId), playing, _art,
                     tl?.Position ?? TimeSpan.Zero, (tl?.EndTime ?? TimeSpan.Zero) - (tl?.StartTime ?? TimeSpan.Zero),
-                    tl?.LastUpdatedTime ?? DateTimeOffset.Now);
+                    tl?.LastUpdatedTime ?? DateTimeOffset.Now, s.SourceAppUserModelId ?? "");
                 Changed?.Invoke(info, newTrack);
             }
             catch { }

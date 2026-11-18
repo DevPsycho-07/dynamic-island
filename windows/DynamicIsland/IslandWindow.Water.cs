@@ -85,6 +85,7 @@ namespace DynamicIsland
             }
 
             DockFill.Width = Math.Max(0, 106 * _water.Fraction);
+            DockFill.Visibility = _water.GoalMet ? Visibility.Collapsed : Visibility.Visible; // goal done: no line
 
             // Home card
             PetSpeech.Text = _water.StatusLine();
