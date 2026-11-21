@@ -57,7 +57,7 @@ namespace DynamicIsland
             if (artChanged) ApplyArt(info.Art);
             UpdateProgress();
 
-            if (newTrack && _mediaSeen && info.Playing && _s.ShowMedia && !_expanded && _alert == null && !_mediaInFront)
+            if (newTrack && _mediaSeen && info.Playing && _s.ShowMedia && !_expanded && _alert == null && !_mediaInFront && !Quiet)
             {
                 _mediaSeen = true;
                 ShowMessage("", WhiteB, info.Title, info.Artist, "", 2.6, info.Art);

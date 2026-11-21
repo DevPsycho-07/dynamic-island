@@ -32,7 +32,7 @@ namespace DynamicIsland
             _power.PluggedChanged += (plugged, pct) => Dispatcher.BeginInvoke(() =>
             {
                 if (plugged) { _lowWarned = _criticalWarned = false; } else _fullWarned = false;
-                if (!_s.ShowPower || !_power.HasBattery) return;
+                if (!_s.ShowPower || !_power.HasBattery || Quiet) return;
                 if (plugged) ShowMessage("\uE945", Green, "Charging", "Plugged in", $"{pct}%", 3);
                 else ShowMessage("\uE945", Brushes.Gray, "On battery", TimeLeftText() ?? "Charger disconnected", $"{pct}%", 3);
             });
@@ -41,15 +41,16 @@ namespace DynamicIsland
                 if (!_s.ShowPower) return;
                 if (_power.Plugged)
                 {
-                    if (pct >= 100 && !_fullWarned) { _fullWarned = true; ShowMessage("\uE945", Green, "Fully charged", "You can unplug", "100%", 3); }
+                    if (pct >= 100 && !_fullWarned) { _fullWarned = true; if (!Quiet) ShowMessage("\uE945", Green, "Fully charged", "You can unplug", "100%", 3); }
                     return;
                 }
                 if (pct <= 10 && !_criticalWarned) { _criticalWarned = _lowWarned = true; ShowMessage("\uE7BA", Red, "Battery critical", "Plug in now", $"{pct}%", 6); }
-                else if (pct <= 20 && !_lowWarned) { _lowWarned = true; ShowMessage("\uE7BA", Orange, "Low battery", TimeLeftText() ?? "Consider plugging in", $"{pct}%", 5); }
+                // Critical always shows (Do not disturb or not); the softer low-battery nudge doesn't.
+                else if (pct <= 20 && !_lowWarned) { _lowWarned = true; if (!Quiet) ShowMessage("\uE7BA", Orange, "Low battery", TimeLeftText() ?? "Consider plugging in", $"{pct}%", 5); }
             });
             _power.EnergySaverChanged += on => Dispatcher.BeginInvoke(() =>
             {
-                if (_s.ShowPower) ShowMessage("\uE945", Yellow, on ? "Energy saver on" : "Energy saver off", on ? "Saving battery" : "Back to normal", "", 3);
+                if (_s.ShowPower && !Quiet) ShowMessage("\uE945", Yellow, on ? "Energy saver on" : "Energy saver off", on ? "Saving battery" : "Back to normal", "", 3);
             });
             _power.Start();
 
@@ -60,7 +61,7 @@ namespace DynamicIsland
 
             _bt.Changed += ev => Dispatcher.BeginInvoke(() =>
             {
-                if (!_s.ShowBluetooth) return;
+                if (!_s.ShowBluetooth || Quiet) return;
                 ShowMessage("\uE702", Blue, ev.Name, ev.Connected ? "Connected" : "Disconnected",
                     ev.Battery is int b && ev.Connected ? $"{b}%" : "", 3);
             });
@@ -86,7 +87,8 @@ namespace DynamicIsland
 
         void OnToast(ToastInfo t)
         {
-            if (!_s.ShowNotifications || _hiddenForFullscreen || _expanded || _alert != null) return;
+            // Do not disturb: Windows holds its own banners back, so the island doesn't show them either.
+            if (!_s.ShowNotifications || _hiddenForFullscreen || _expanded || _alert != null || Quiet) return;
             NotifyApp.Text = t.App.ToUpperInvariant();
             NotifyTitle.Text = string.IsNullOrWhiteSpace(t.Title) ? t.App : t.Title;
             NotifyBody.Text = t.Body;
@@ -182,8 +184,10 @@ namespace DynamicIsland
         {
             string? mic = PrivacyService.InUse("microphone");
             string? cam = PrivacyService.InUse("webcam");
-            if (cam != null && cam != _camApp) ShowMessage("\uE714", Green, "Camera in use", cam, "", 2.5);
-            else if (mic != null && mic != _micApp) ShowMessage("\uE720", Orange, "Microphone in use", mic, "", 2.5);
+            // Do not disturb: no peek, but the dot below still marks the camera / mic as in use.
+            bool peek = !Quiet;
+            if (peek && cam != null && cam != _camApp) ShowMessage("\uE714", Green, "Camera in use", cam, "", 2.5);
+            else if (peek && mic != null && mic != _micApp) ShowMessage("\uE720", Orange, "Microphone in use", mic, "", 2.5);
             _micApp = mic;
             _camApp = cam;
             DockDot.Visibility = mic != null || cam != null ? Visibility.Visible : Visibility.Collapsed;

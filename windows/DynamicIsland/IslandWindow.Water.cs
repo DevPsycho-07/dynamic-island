@@ -47,7 +47,7 @@ namespace DynamicIsland
                 int delta = _water.Intake - _lastIntake;
                 _s.Save();
                 RefreshWater(true);
-                if (delta > 0) ShowMessage("", WaterB, "Synced from phone", $"+{delta} ml today  ·  {_water.AmountText}", "", 3);
+                if (delta > 0 && !Quiet) ShowMessage("", WaterB, "Synced from phone", $"+{delta} ml today  ·  {_water.AmountText}", "", 3);
             };
             _sync.Start();
             _alertTimeout.Tick += (_, _) =>
@@ -274,6 +274,7 @@ namespace DynamicIsland
             if (_water.RollDay()) _s.Save();
             RefreshWater(false);
             if (_hiddenForFullscreen || _expanded || _alert != null || _view is View.Notify or View.Message) return;
+            if (Quiet) return; // reminds once Do not disturb ends
             if (!_water.ShouldRemind()) return;
             _water.MarkReminded();
             _s.Save();
@@ -285,7 +286,8 @@ namespace DynamicIsland
 
         // ---------- shared alert pop-up ----------
 
-        void ShowAlert(AlertInfo info, string title, string line, string btn1, string? btn2, string? glyph, Brush? accent, BitmapSource? logo = null)
+        /// <param name="hold">Do not disturb: don't pop it up — keep it queued until you click the island or DND ends.</param>
+        void ShowAlert(AlertInfo info, string title, string line, string btn1, string? btn2, string? glyph, Brush? accent, BitmapSource? logo = null, bool hold = false)
         {
             void show()
             {
@@ -319,10 +321,11 @@ namespace DynamicIsland
             if (_alert != null)
             {
                 // A permission question jumps the queue; a water nudge just waits for next time.
-                if (info.Kind == AlertKind.Ask && _alert.Kind == AlertKind.Water) { _alert = null; show(); }
+                if (info.Kind == AlertKind.Ask && _alert.Kind == AlertKind.Water && !hold) { _alert = null; show(); }
                 else if (info.Kind != AlertKind.Water) _pendingAlerts.Enqueue((info, show));
                 return;
             }
+            if (hold) { _pendingAlerts.Enqueue((info, show)); return; }
             show();
         }
 

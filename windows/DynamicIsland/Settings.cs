@@ -27,6 +27,7 @@ namespace DynamicIsland
         public bool ShowClipboardPeek { get; set; } = true;
         public bool ShowPrivacy { get; set; } = true;
         public bool HideInFullscreen { get; set; } = true;
+        public bool RespectDnd { get; set; } = true;     // Windows Do not disturb on → no pop-ups or sounds (see IslandWindow.Quiet)
         public bool ReduceMotion { get; set; }
         public bool PetDances { get; set; } = true;
         public string WeatherCity { get; set; } = "";

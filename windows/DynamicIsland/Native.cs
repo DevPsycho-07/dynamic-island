@@ -51,6 +51,25 @@ namespace DynamicIsland
             catch { return false; }
         }
 
+        // ---------- Do not disturb ----------
+
+        // Windows has no public API for this. The shell keeps the active "quiet hours" profile in a WNF state:
+        // 0 = off, 1 = priority only (Windows 11's Do not disturb, focus sessions), 2 = alarms only (Windows 10 Focus assist).
+        [DllImport("ntdll.dll")] static extern int NtQueryWnfStateData(ref ulong stateName, IntPtr typeId, IntPtr scope, out uint changeStamp, out int buffer, ref uint bufferSize);
+        const ulong WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED = 0x0D83063EA3BF1C75;
+
+        /// <summary>Do not disturb (or a focus session / Focus assist) is on. Cheap enough to call any time.</summary>
+        public static bool IsDoNotDisturbOn()
+        {
+            try
+            {
+                ulong name = WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED;
+                uint size = 4;
+                return NtQueryWnfStateData(ref name, IntPtr.Zero, IntPtr.Zero, out _, out int profile, ref size) == 0 && size == 4 && profile != 0;
+            }
+            catch { return false; }
+        }
+
         public static void SetNoActivate(IntPtr hwnd, bool on)
         {
             int ex = GetWindowLong(hwnd, GWL_EXSTYLE);

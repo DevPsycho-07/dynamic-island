@@ -207,6 +207,24 @@ namespace DynamicIsland
             BuildWaterChips();
             _ = RefreshWeatherAsync();
             RevertToBase();
+            if (!Quiet) ReleaseHeld();   // "Respect Do not disturb" just switched off
+        }
+
+        // ---------- Do not disturb ----------
+
+        /// <summary>
+        /// Windows' Do not disturb (or a focus session) is on and the island respects it: nothing pops up or plays a
+        /// sound by itself. Permission prompts are held (see ShowAlert's hold) until you click the island or it ends.
+        /// Things you do yourself (volume, copying, logging water) and your own timers / reminders still show.
+        /// </summary>
+        bool Quiet => _s.RespectDnd && Native.IsDoNotDisturbOn();
+
+        bool _wasQuiet;
+
+        /// <summary>Show the next question Do not disturb held back (it ended, or you clicked the island).</summary>
+        void ReleaseHeld()
+        {
+            if (_alert == null && _pendingAlerts.Count > 0) _pendingAlerts.Dequeue().show();
         }
 
         // ---------- the notch shape ----------
@@ -406,6 +424,8 @@ namespace DynamicIsland
         void Pill_Click(object sender, MouseButtonEventArgs e)
         {
             if (_expanded || _alert != null) return;
+            // Questions held back by Do not disturb (nothing else is queued while no alert shows): click to answer.
+            if (_pendingAlerts.Count > 0) { ReleaseHeld(); return; }
             switch (_view)
             {
                 case View.Activity:
@@ -574,6 +594,9 @@ namespace DynamicIsland
                 }
                 if (_s.ShowPrivacy) CheckPrivacy();
                 ExpireActivities();
+                bool quiet = Quiet;
+                if (_wasQuiet && !quiet) ReleaseHeld();   // Do not disturb ended: questions still waiting show now
+                _wasQuiet = quiet;
             }
             if (_ticks % 15 == 0) { CheckWater(); CheckReminders(); }
             if (_ticks % 1200 == 0) _ = RefreshWeatherAsync();

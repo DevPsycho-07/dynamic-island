@@ -13,7 +13,7 @@ They copy these scripts to `%APPDATA%\DynamicIsland\hooks\` and register them (y
 |---|---|
 | Claude Code prompt sent | Live pill: "Claude · project" with a spinner and elapsed time |
 | Claude needs input | Orange "waiting" pill + peek; click jumps to VS Code / Terminal |
-| Claude asks permission | **Allow / Deny** buttons right in the island (falls back to the normal prompt after 45 s) |
+| Claude asks permission | **Allow / Deny** buttons right in the island (falls back to the normal prompt after 45 s). With Windows *Do not disturb* on it doesn't pop up or chime — the pill turns orange and a click on the island shows the question |
 | Claude finished | Green "done" peek with the last message |
 | PowerShell command ≥ 10 s | "Command finished / failed" with duration |
 

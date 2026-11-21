@@ -344,15 +344,20 @@ namespace DynamicIsland
         {
             _api.ActivityPosted += a => Dispatcher.BeginInvoke(() => OnActivity(a));
             _api.NotifyPosted += n => Dispatcher.BeginInvoke(() =>
-                ShowMessage(IconGlyph(n.Icon), IconBrush(n.Icon), n.Title, n.Body ?? "", "", Math.Clamp(n.Ttl ?? 4, 2, 15)));
+            {
+                if (!Quiet) ShowMessage(IconGlyph(n.Icon), IconBrush(n.Icon), n.Title, n.Body ?? "", "", Math.Clamp(n.Ttl ?? 4, 2, 15));
+            });
             _api.AskPosted += q => Dispatcher.BeginInvoke(() =>
             {
                 var info = new AlertInfo { Kind = AlertKind.Ask, Ask = q };
-                SystemSounds.Asterisk.Play();
+                // Do not disturb: no sound and no pop-up. The session's pill still shows "waiting"; clicking the
+                // island brings the question up, and so does DND ending. You can also answer in the chat as usual.
+                bool quiet = Quiet;
+                if (!quiet) SystemSounds.Asterisk.Play();
                 // Name the session that's asking: "Allow Bash? · Dynamic Island #2"
                 string title = q.Activity != null && _activities.TryGetValue(q.Activity, out var owner) && !string.IsNullOrEmpty(owner.Label)
                     ? $"{q.Title} · {LabelOf(owner)}" : q.Title;
-                ShowAlert(info, title, q.Body ?? "", q.Buttons[0], q.Buttons.Length > 1 ? q.Buttons[1] : null, IconGlyph(q.Icon), IconBrush(q.Icon), AppIcons.ForIcon(q.Icon));
+                ShowAlert(info, title, q.Body ?? "", q.Buttons[0], q.Buttons.Length > 1 ? q.Buttons[1] : null, IconGlyph(q.Icon), IconBrush(q.Icon), AppIcons.ForIcon(q.Icon), hold: quiet);
                 // If the caller gives up (timeout), drop the question.
                 q.Answer.Task.ContinueWith(_ => { }, System.Threading.Tasks.TaskScheduler.Default);
                 var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(Math.Clamp(q.Timeout, 5, 600)) };
@@ -425,14 +430,14 @@ namespace DynamicIsland
                 _activityEnds[a.Id] = DateTime.Now.AddSeconds(Math.Clamp(a.Ttl ?? 6, 1, 3600));
                 var elapsed = DateTime.Now - a.Started;
                 string took = elapsed.TotalSeconds >= 5 ? $" · {FmtElapsed(elapsed)}" : "";
-                ShowMessage(state == "done" ? "" : "", state == "done" ? Green : Red, Display(a), (a.Body ?? "") + took, "", 4,
+                if (!Quiet) ShowMessage(state == "done" ? "" : "", state == "done" ? Green : Red, Display(a), (a.Body ?? "") + took, "", 4,
                     image: AppIcons.ForIcon(a.Icon),
                     action: a.Focus != null ? "Open" : null, onAction: a.Focus != null ? () => Native.FocusProcess(a.Focus, a.Window) : null);
             }
             else
             {
                 _activityEnds.Remove(a.Id);
-                if (state == "waiting")
+                if (state == "waiting" && !Quiet)   // Do not disturb: the pill just turns orange, no peek or sound
                 {
                     SystemSounds.Asterisk.Play();
                     ShowMessage(IconGlyph(a.Icon), IconBrush(a.Icon), Display(a), a.Body ?? "Needs your input", "", 6,

@@ -20,6 +20,7 @@ Tray icon (water drop): left-click opens the island, right-click opens the menu.
 | Live activities | Now playing (art + bars that react to the real audio level), focus timer, Claude Code / builds (spinner, elapsed time) |
 | Peeks | Volume, brightness, charging, low/full battery, energy saver, Windows notifications, Bluetooth, copied text, mic/camera, track change |
 | Alerts | Pet reminder (Drink / Snooze), your reminders (Done / Snooze), Claude permission (**Allow / Deny**) |
+| Do not disturb | While Windows' Do not disturb or a focus session is on, nothing pops up or chimes by itself: no notification, Claude, Bluetooth, charging or water peeks. Permission prompts wait quietly (the pill turns orange; click the island to answer) and show once DND ends. Volume, copying, your own timers and reminders, and critical battery still show. Settings → *Respect Do not disturb* |
 
 ## Expanded tabs
 

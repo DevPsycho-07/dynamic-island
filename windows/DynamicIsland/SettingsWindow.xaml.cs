@@ -80,6 +80,10 @@ namespace DynamicIsland
             Section("Behaviour");
             Card(
                 Toggle("Hide during fullscreen", "Games, videos and presentations stay clean", _s.HideInFullscreen, v => { _s.HideInFullscreen = v; Apply(); }),
+                Toggle("Respect Do not disturb",
+                    "While Windows' Do not disturb or a focus session is on: no pop-ups or sounds. Permission prompts wait quietly — click the island to answer. Your own timers and reminders still ring." +
+                    (Native.IsDoNotDisturbOn() ? " (Do not disturb is on right now.)" : ""),
+                    _s.RespectDnd, v => { _s.RespectDnd = v; Apply(); }),
                 Toggle("Reduce motion", "No bounce, shorter animations", _s.ReduceMotion, v => { _s.ReduceMotion = v; Apply(); }));
             Section("Weather");
             bool pin = _s.WeatherMode == "PIN";
