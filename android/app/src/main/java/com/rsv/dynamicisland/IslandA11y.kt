@@ -26,6 +26,11 @@ class IslandA11y : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        // Whatever was in front when we were last on may be long gone (e.g. switched off for payment mode).
+        topPackage = null
+        // Payment mode switched us off, so being switched back on while it still runs means you did it yourself:
+        // it's over. (Its own exit clears the flag before switching us on, so this never fires for that.)
+        if (PaymentMode.active(this)) PaymentMode.exit(this, manual = true)
         holdIsland()
         IslandService.hostChanged(this)
     }
@@ -50,12 +55,14 @@ class IslandA11y : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
-        if (PaymentMode.isPaymentApp(this, pkg)) PaymentMode.enter(this, pkg)
+        val pay = PaymentMode.isPaymentApp(this, pkg)
+        if (pay) PaymentMode.enter(this, pkg)
         val cls = event.className?.toString() ?: return
         // Dialogs, menus, the keyboard, the notification shade and our own overlay also fire this event;
         // only a real activity means a different app is now in front.
         if (pkg != topPackage && isActivity(pkg, cls)) {
             topPackage = pkg
+            if (!pay) PaymentMode.leftPaymentApps()
             IslandService.running?.onTopAppChanged()
         }
     }

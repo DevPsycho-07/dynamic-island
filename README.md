@@ -145,6 +145,11 @@ debugging only comes back by itself on a network you marked *Always allow*; othe
 If an app still complains the very first time (some check the instant they open), go back and open it again —
 by then the island has stepped aside.
 
+To end payment mode yourself at any time, tap **Bring island back** on its *Island paused for payment*
+notification, open the island app, or switch its accessibility service back on — any of these brings the island
+back. Without usage access (the second command above) the island can't tell when you leave the payment app, so it
+only comes back when you lock the phone or end it yourself; the Payment apps card says so when that's the case.
+
 The same `WRITE_SECURE_SETTINGS` grant powers **Replace pop-up notifications** (Island tab, on by default): while
 the island is up, the system's heads-up banners are switched off so a notification only shows once, in the island
 (it still lands in the shade and on the lock screen). Like the system pop-up, the island's notification stays put

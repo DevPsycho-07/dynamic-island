@@ -70,6 +70,8 @@ class IslandService : Service(), IslandView.Host {
     private val payPoll = object : Runnable {
         override fun run() {
             if (!paymentPaused) return
+            // Ended somewhere that couldn't reach us: don't stay hidden waiting for a payment mode that's over.
+            if (!PaymentMode.active(this@IslandService)) { resumeAfterPayment(); return }
             PaymentMode.check(this@IslandService)
             if (paymentPaused) main.postDelayed(this, 1500)
         }
@@ -90,6 +92,7 @@ class IslandService : Service(), IslandView.Host {
             paymentPaused = false
             main.removeCallbacks(payPoll)
             if (root == null) rebuildWindow() else syncVisibility()
+            updateForeground() // drops the notification if accessibility is already back
             if (isForeground) updateNotification()
         }
     }
@@ -99,9 +102,13 @@ class IslandService : Service(), IslandView.Host {
 
     private var isForeground = false
 
-    /** Foreground notification only when nothing else keeps us alive (accessibility service off). */
+    /**
+     * Foreground notification only when nothing else keeps us alive (accessibility service off) — and for the
+     * whole of payment mode. There the accessibility service is about to go away, and once it has, Android won't
+     * let us back into the foreground: we'd be stopped or frozen, and payment mode would never end.
+     */
     fun updateForeground() {
-        if (IslandA11y.instance != null) {
+        if (IslandA11y.instance != null && !PaymentMode.active(this)) {
             if (isForeground) {
                 try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) { }
                 isForeground = false
@@ -239,11 +246,31 @@ class IslandService : Service(), IslandView.Host {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val paused = paymentPaused
+        val paused = paymentPaused || PaymentMode.active(this)
+        if (paused) {
+            // Its own (non-minimised) channel so the button is easy to reach; tapping the notification opens the
+            // app, which ends payment mode too.
+            val auto = PaymentMode.hasUsageAccess(this)
+            return Notification.Builder(this, App.CH_PAY)
+                .setSmallIcon(R.drawable.ic_stat_island)
+                .setContentTitle("Island paused for payment")
+                .setContentText(if (auto) "Back when you leave the payment app or lock the phone" else "Back when you lock the phone")
+                .setOngoing(true)
+                .setShowWhen(false)
+                .setContentIntent(open)
+                .addAction(
+                    Notification.Action.Builder(
+                        Icon.createWithResource(this, R.drawable.ic_stat_island),
+                        "Bring island back",
+                        ActionReceiver.pending(this, ActionReceiver.END_PAY, 24)
+                    ).build()
+                )
+                .build()
+        }
         return Notification.Builder(this, App.CH_ISLAND)
             .setSmallIcon(R.drawable.ic_stat_island)
-            .setContentTitle(if (paused) "Island paused for payment" else "Island is on")
-            .setContentText(if (paused) "Back when you leave the payment app" else "💧 ${Water.todayMl(this)} / ${Water.goal(prefs)} ml today")
+            .setContentTitle("Island is on")
+            .setContentText("💧 ${Water.todayMl(this)} / ${Water.goal(prefs)} ml today")
             .setOngoing(true)
             .setShowWhen(false)
             .setContentIntent(open)
@@ -549,6 +576,8 @@ class IslandService : Service(), IslandView.Host {
                     screenOn = false
                     view?.onScreenOff()
                     syncVisibility()
+                    // Locking the phone ends payment mode — straight away, not on the next poll (which may not run).
+                    if (paymentPaused) PaymentMode.exit(this@IslandService)
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     screenOn = true

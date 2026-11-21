@@ -22,11 +22,14 @@ import android.util.Log
  * restored to exactly what they were afterwards. Only settings that were on are touched, and only
  * those are turned back on.
  *
+ * You can always end it yourself: "Bring island back" on its notification, opening the island app, or switching
+ * its accessibility service back on — any of them ends payment mode (see [exit]).
+ *
  * Needs two one-time grants (no UI exists for them):
  *   adb shell pm grant com.rsv.dynamicisland android.permission.WRITE_SECURE_SETTINGS
  *   adb shell appops set com.rsv.dynamicisland GET_USAGE_STATS allow
  * Without WRITE_SECURE_SETTINGS it does nothing (it could switch off but never back on).
- * Without usage access it only comes back when the screen turns off.
+ * Without usage access it only comes back when the screen turns off (or by hand).
  */
 object PaymentMode {
     private const val TAG = "PaymentMode"
@@ -63,37 +66,69 @@ object PaymentMode {
     fun canSwitch(ctx: Context) =
         ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
 
-    fun hasUsageAccess(ctx: Context) = foreground(ctx, probe = true) != null || try {
+    /** Usage access (to see which app is in front). Without it payment mode only ends on lock or by hand. */
+    fun hasUsageAccess(ctx: Context): Boolean = try {
         val ops = ctx.getSystemService(android.app.AppOpsManager::class.java)
-        ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName) ==
-            android.app.AppOpsManager.MODE_ALLOWED
+        val op = android.app.AppOpsManager.OPSTR_GET_USAGE_STATS
+        val uid = android.os.Process.myUid()
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            ops.unsafeCheckOpNoThrow(op, uid, ctx.packageName)
+        } else {
+            @Suppress("DEPRECATION") ops.checkOpNoThrow(op, uid, ctx.packageName)
+        }
+        when (mode) {
+            android.app.AppOpsManager.MODE_ALLOWED -> true
+            android.app.AppOpsManager.MODE_DEFAULT ->
+                ctx.checkSelfPermission(Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED
+            else -> false
+        }
     } catch (_: Exception) { false }
 
     fun active(ctx: Context) = Prefs.get(ctx).getBoolean(Prefs.PAY_ACTIVE, false)
 
+    /**
+     * The payment app that was on screen when you ended payment mode by hand. It doesn't send the island straight
+     * back into payment mode until some other app has been in front (see [leftPaymentApps]). In memory only.
+     */
+    @Volatile private var skipPkg: String? = null
+
     /** A payment app came to the front (seen by the accessibility service): step aside. */
     fun enter(a11y: IslandA11y, pkg: String) {
         val p = Prefs.get(a11y)
-        if (!Prefs.on(p, Prefs.F_AUTO_PAY) || active(a11y) || !canSwitch(a11y)) return
-        p.edit().putBoolean(Prefs.PAY_ACTIVE, true).putString(Prefs.PAY_APP, pkg).commit()
+        if (!Prefs.on(p, Prefs.F_AUTO_PAY) || active(a11y) || !canSwitch(a11y) || pkg == skipPkg) return
+        p.edit().putBoolean(Prefs.PAY_ACTIVE, true).putString(Prefs.PAY_APP, pkg)
+            .putLong(Prefs.PAY_SINCE, System.currentTimeMillis()).commit()
         Log.i(TAG, "pausing for $pkg")
-        // Keep the island process alive (paused, no window) while accessibility is off.
+        // Keep the island process alive (paused, no window) while accessibility is off. IslandService stays in the
+        // foreground for the whole stretch (see updateForeground): it can't get back there once accessibility is gone.
         try { a11y.startForegroundService(Intent(a11y, IslandService::class.java)) } catch (_: Exception) { }
         IslandService.running?.pauseForPayment()
         if (Prefs.on(p, Prefs.F_PAY_DEV)) pauseDevOptions(a11y)
         setAccessibility(a11y, false)
     }
 
-    /** Left the payment app (or screen off): switch accessibility back on; the island returns when it reconnects. */
-    fun exit(ctx: Context) {
-        if (!active(ctx)) return
+    /**
+     * Left the payment app (or screen off): switch accessibility back on; the island returns when it reconnects.
+     *
+     * [manual]: you asked for it — "Bring island back" in the notification, opening the island app, or switching
+     * its accessibility service back on yourself. That always ends it, even if the saved state and the running
+     * island disagree. If a payment app is on screen right then (ended from the notification shade over it), it
+     * doesn't pull the island straight back into payment mode.
+     */
+    fun exit(ctx: Context, manual: Boolean = false) {
+        val paused = IslandService.running?.paymentPaused == true
+        if (!active(ctx) && !(manual && paused)) return
+        if (manual) skipPkg = front(ctx, Prefs.get(ctx).getLong(Prefs.PAY_SINCE, 0L))?.pkg?.takeIf { isPaymentApp(ctx, it) }
         // Before clearing the flag: if we die half-way, the restarted service still owes everything back.
         restoreDevOptions(ctx)
         Prefs.get(ctx).edit().putBoolean(Prefs.PAY_ACTIVE, false).commit()
-        Log.i(TAG, "resuming")
+        Log.i(TAG, if (manual) "ended by hand" else "resuming")
         setAccessibility(ctx, true)
         IslandService.running?.resumeAfterPayment()
     }
+
+    /** A non-payment app came to the front: the app you ended payment mode in by hand counts again. */
+    fun leftPaymentApps() { skipPkg = null }
 
     /**
      * Developer options, then USB and wireless debugging. Switched off in reverse order (debugging
@@ -149,28 +184,50 @@ object PaymentMode {
         false
     }
 
-    /** Package most recently brought to the front (last 20 s), via usage access; null if unknown. */
-    private fun foreground(ctx: Context, probe: Boolean = false): String? = try {
-        val usm = ctx.getSystemService(UsageStatsManager::class.java)
+    /** An app that came to the front, and when. */
+    private class Front(val pkg: String, val at: Long)
+
+    // The app in front, kept up to date from usage events since payment mode began (only touched from the main thread).
+    private var front: Front? = null
+    private var scannedTo = 0L
+    private var scanSession = Long.MIN_VALUE
+
+    /**
+     * The app most recently brought to the front since shortly before payment mode began [since], via usage access;
+     * null if unknown. Only new events are read each time, so it keeps working however long the payment app stays
+     * open, and after the island restarts mid-way (the old version only looked 20 s back, and lost track for good
+     * once you had been in another app longer than that).
+     */
+    private fun front(ctx: Context, since: Long): Front? = try {
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - if (probe) 3_600_000 else 20_000, now)
+        if (scanSession != since) {
+            scanSession = since
+            front = null
+            scannedTo = (if (since > 0) since else now) - 60_000
+        }
+        val usm = ctx.getSystemService(UsageStatsManager::class.java)
+        // A little overlap: an event can be logged just after the last read with a timestamp just before it.
+        val events = usm.queryEvents(scannedTo - 5_000, now)
         val e = UsageEvents.Event()
-        var last: String? = null
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
-            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) last = e.packageName
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED && e.timeStamp >= (front?.at ?: Long.MIN_VALUE)) {
+                front = Front(e.packageName, e.timeStamp)
+            }
         }
-        last
+        scannedTo = now
+        front
     } catch (_: Exception) { null }
-
-    private var away = 0
 
     /** Called every ~1.5 s by IslandService while paused. */
     fun check(ctx: Context) {
         if (!active(ctx)) return
-        if (!ctx.getSystemService(PowerManager::class.java).isInteractive) { away = 0; exit(ctx); return }
-        val fg = foreground(ctx) ?: return
-        if (isPaymentApp(ctx, fg)) { away = 0; return }
-        if (++away >= 2) { away = 0; exit(ctx) }
+        if (!ctx.getSystemService(PowerManager::class.java).isInteractive) { exit(ctx); return }
+        val since = Prefs.get(ctx).getLong(Prefs.PAY_SINCE, 0L)
+        val f = front(ctx, since) ?: return
+        if (isPaymentApp(ctx, f.pkg)) return
+        // Another app has been in front for a moment (not just passing through), and you switched to it after payment
+        // mode began — a payment app's pop-up over another app can start it, and that app isn't a reason to stop.
+        if (f.at >= since - 2_000 && System.currentTimeMillis() - f.at >= 1_500) exit(ctx)
     }
 }

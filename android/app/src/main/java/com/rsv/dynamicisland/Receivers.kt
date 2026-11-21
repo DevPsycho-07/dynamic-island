@@ -13,10 +13,12 @@ class ActionReceiver : BroadcastReceiver() {
             SNOOZE -> Water.snooze(ctx)
             REMIND -> Water.onReminderAlarm(ctx)
             TIMER_DONE -> IslandTimer.finish(ctx)
+            END_PAY -> PaymentMode.exit(ctx, manual = true)
         }
     }
 
     companion object {
+        const val END_PAY = "com.rsv.dynamicisland.END_PAY"
         const val DRINK = "com.rsv.dynamicisland.DRINK"
         const val SNOOZE = "com.rsv.dynamicisland.SNOOZE"
         const val REMIND = "com.rsv.dynamicisland.REMIND"

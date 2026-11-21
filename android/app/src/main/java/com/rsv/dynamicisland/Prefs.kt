@@ -100,6 +100,7 @@ object Prefs {
     const val F_AUTO_PAY = "f_auto_pay"
     const val PAY_ACTIVE = "pay_active"
     const val PAY_APP = "pay_app"
+    const val PAY_SINCE = "pay_since"  // local state: when the current payment-mode stretch began
     const val PAY_APPS = "pay_apps"
     /** Default on: payment mode also switches developer options / USB + wireless debugging off (see [PaymentMode]). */
     const val F_PAY_DEV = "f_pay_dev"

@@ -124,6 +124,8 @@ class MainActivity : Activity() {
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
         refreshAll()
         Sync.requestNow(this)
+        // Opening the island app means you've left the payment app: end payment mode if it's still on (or stuck).
+        PaymentMode.exit(this, manual = true)
         if (prefs.getBoolean(Prefs.ISLAND_ON, false)) {
             val s = IslandService.running
             if (s == null) IslandService.start(this) else if (!s.hasWindow()) s.rebuildWindow()
@@ -645,7 +647,9 @@ class MainActivity : Activity() {
                 !PaymentMode.canSwitch(this) -> "Needs a one-time permission over adb (see README → Auto payment mode)."
                 else -> "$n app${if (n == 1) "" else "s"} selected. While one is open the island hides and turns its accessibility " +
                     (if (Prefs.on(prefs, Prefs.F_PAY_DEV)) "and developer options " else "") +
-                    "off; they come back when you leave."
+                    "off; they come back when you leave. To end it yourself, tap Bring island back in its notification or open this app." +
+                    (if (!PaymentMode.hasUsageAccess(this)) "\n\nUsage access isn't granted, so it can't tell when you leave the payment app " +
+                        "and only ends when you lock the phone. Run the second adb command in the README." else "")
             }
         }
         loadPay()

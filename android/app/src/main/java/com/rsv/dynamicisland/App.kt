@@ -15,6 +15,12 @@ class App : Application() {
             }
         )
         nm.createNotificationChannel(
+            NotificationChannel(CH_PAY, "Payment mode", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shown while the island steps aside for a payment app, with a button to bring it back."
+                setShowBadge(false)
+            }
+        )
+        nm.createNotificationChannel(
             NotificationChannel(CH_WATER, "Water reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Your pet nudges you when you fall behind pace."
             }
@@ -34,6 +40,7 @@ class App : Application() {
 
     companion object {
         const val CH_ISLAND = "island"
+        const val CH_PAY = "payment_mode"
         const val CH_WATER = "water"
         const val CH_TIMER = "timer"
     }
