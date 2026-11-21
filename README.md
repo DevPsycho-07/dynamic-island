@@ -118,6 +118,8 @@ drag files onto it for the shelf · **Ctrl+Alt+W** log a drink · **Ctrl+Alt+I**
 3. Phones with aggressive battery savers (Xiaomi, Infinix/Tecno/itel, Oppo, Vivo…): allow **Auto-start** and set
    battery to **No restrictions / Unrestricted** for the app, or the island may be killed in the background.
 4. If the pill doesn't sit perfectly around your camera: **Island** tab → *Auto-fit to camera*, or adjust the position/size sliders.
+   If the small pill hides behind the camera, *Pill gap from top* drops the pill lower, and opening it grows the island
+   from there instead of jumping to the top. The docked view stays on the camera.
 
 > After updating the app, some phones switch its accessibility service off — re-enable it if the island drops under the status bar.
 
@@ -140,8 +142,10 @@ by then the island has stepped aside.
 
 The same `WRITE_SECURE_SETTINGS` grant powers **Replace pop-up notifications** (Island tab, on by default): while
 the island is up, the system's heads-up banners are switched off so a notification only shows once, in the island
-(it still lands in the shade and on the lock screen). They come back in landscape, in payment mode and when the island
-is switched off. *Turn the island off before uninstalling*, or the pop-ups stay off until you run
+(it still lands in the shade and on the lock screen). Like the system pop-up, the island's notification stays put
+when you touch the rest of the screen: swipe it left or right to clear it, up to tuck it away, or let it time out.
+In landscape the island stays hidden except for notifications, which still replace the pop-ups. The pop-ups come
+back in payment mode and when the island is switched off. *Turn the island off before uninstalling*, or the pop-ups stay off until you run
 `adb shell settings put global heads_up_notifications_enabled 1`.
 
 ---

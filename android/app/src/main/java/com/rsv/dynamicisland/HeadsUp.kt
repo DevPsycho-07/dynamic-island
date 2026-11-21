@@ -10,8 +10,9 @@ import android.util.Log
  * Android gives no app a way to hide another app's pop-up, so while the island is on screen with
  * notification peeks on, this switches the system's heads-up pop-ups off (Settings.Global
  * "heads_up_notifications_enabled"); notifications still arrive in the shade, on the lock screen
- * and the always-on display as usual. Whenever the island steps away — landscape, payment mode,
- * the island switched off — the pop-ups come back, restored to exactly what they were.
+ * and the always-on display as usual. In landscape the island shows only notifications, still in
+ * place of the pop-ups. Whenever the island steps away — payment mode, the island switched off —
+ * the pop-ups come back, restored to exactly what they were.
  *
  * Needs WRITE_SECURE_SETTINGS (the same one-time adb grant as Auto payment mode); without it this does nothing.
  */

@@ -57,6 +57,8 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         fun openQuickSettings()
         /** [pkg] is the app on screen right now (and the phone is unlocked). */
         fun inFront(pkg: String?): Boolean
+        /** A notification (or a reply to one) came up on the island, or went away. */
+        fun onNotifShowing(showing: Boolean)
     }
 
     /** The real text box lives in [IslandRoot]; this is how the island drives it. */
@@ -142,6 +144,15 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     private var slideDir = 0
     private var tw = 0f; private var th = 0f; private var tr = 0f; private var tt = 0f
     private var cw = 0f; private var ch = 0f; private var cr = 0f; private var ct = 0f
+    /**
+     * Pill gap (Position & size → Pill gap from top): the small pill is drawn this much lower so it
+     * clears the camera; the docked view gets 0, and a full view keeps the gap of whatever it opened
+     * from (so it grows in place instead of jumping to the top). Target / current / velocity, sprung like
+     * the shape. Applied as one canvas shift in [onDraw] and taken back off touches in [onTouchEvent],
+     * so none of the layouts' own drawing has to know about it.
+     */
+    private var tg = 0f; private var cg = 0f; private var vg = 0f
+    private var pillGap = 0f
     private var vw = 0f; private var vh = 0f; private var vr = 0f; private var vt = 0f
     private var prevTop = 0f
     /** Punch-hole diameter in px (0 = unknown). */
@@ -207,6 +218,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
 
     fun reloadGeometry() {
         compactH = dp(prefs.getInt(Prefs.HEIGHT, Prefs.DEF_HEIGHT))
+        pillGap = dp(prefs.getInt(Prefs.PILL_GAP, 0))
         idleW = dp(prefs.getInt(Prefs.WIDTH, Prefs.DEF_WIDTH))
         refresh(force = true)
     }
@@ -248,6 +260,11 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     }
 
     fun showTimerDone() = setPeek(Peek.TIMER_DONE, 20_000)
+
+    /** Position & size sliders: bring the small pill up (at its gap) while you drag, so you can see where it sits. */
+    fun previewPill() {
+        setPeek(Peek.IDLE, 2500)
+    }
 
     fun showThirsty() {
         moodAt = 0
@@ -318,8 +335,13 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     }
 
     fun onOutsideTouch() {
-        if (peek == Peek.REPLY) cancelReply()
-        else if (peek != Peek.NONE || expanded) collapse()
+        when {
+            peek == Peek.REPLY -> cancelReply()
+            // The island stands in for the system pop-up, so it behaves like one: touching the rest of
+            // the screen leaves it alone; only a swipe (left / right / up) or its timeout clears it.
+            peek == Peek.NOTIF -> {}
+            peek != Peek.NONE || expanded -> collapse()
+        }
     }
 
     fun onScreenOff() {
@@ -328,8 +350,8 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         notif = null
         expanded = false
         refresh()
-        cw = tw; ch = th; cr = tr; ct = tt
-        vw = 0f; vh = 0f; vr = 0f; vt = 0f
+        cw = tw; ch = th; cr = tr; ct = tt; cg = tg
+        vw = 0f; vh = 0f; vr = 0f; vt = 0f; vg = 0f
         moving = false
         prevLayout = null
         shrinkWindow()
@@ -341,7 +363,15 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         val l = computeLayout()
         val s = sizeOf(l)
         val top = topOf(l, s)
-        if (l != layout || force || s[0] != tw || s[1] != th || top != tt) {
+        val gap = when {
+            l == Layout.DOCK -> 0f
+            !l.big -> pillGap
+            // Opening up: grow in place from wherever the island is — from the pill at its gap, from the
+            // docked view at the top; one full view to another keeps its spot.
+            l != layout -> if (layout == Layout.DOCK) 0f else if (!layout.big) pillGap else tg
+            else -> tg
+        }
+        if (l != layout || force || s[0] != tw || s[1] != th || top != tt || gap != tg) {
             if (l != layout) {
                 prevLayout = layout
                 prevW = tw
@@ -354,16 +384,23 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
                 if (l == Layout.DOCK) dockSince = if (cw == 0f) 0L else switchAt
             }
             layout = l
-            tw = s[0]; th = s[1]; tr = s[2]; tt = top
+            tw = s[0]; th = s[1]; tr = s[2]; tt = top; tg = gap
             if (cw == 0f) {
-                cw = tw; ch = th; cr = tr; ct = tt
+                cw = tw; ch = th; cr = tr; ct = tt; cg = tg
             }
             moving = true
             growWindow()
         }
+        val notifUp = layout == Layout.NOTIF || layout == Layout.REPLY
+        if (notifUp != reportedNotif) {
+            reportedNotif = notifUp
+            host.onNotifShowing(notifUp)
+        }
         scheduleExpiry()
         invalidate()
     }
+
+    private var reportedNotif = false
 
     // =====================================================================================
     // Inline reply
@@ -385,7 +422,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         if (peek != Peek.REPLY) return
         field.showField(
             centerDx = (-dp(22)).toInt(),
-            top = (compactH + dp(44)).toInt(),
+            top = (tg + compactH + dp(44)).toInt(),
             w = (tw - dp(76)).toInt(),
             h = dp(40).toInt(),
         )
@@ -684,14 +721,14 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
 
     /** Before a morph: make sure the window is tall enough for it (height only). */
     private fun growWindow() {
-        val h = max(tt + th, ct + ch) * 1.06f + dp(4)
+        val h = max(tt + th, ct + ch) * 1.06f + dp(4) + max(tg, cg)
         if (h > winH || winW == 0) requestWin(max(h, winH.toFloat()))
     }
 
     /** After the morph settles: shrink the height to the shape so swipes below go to the system. */
     private fun shrinkWindow() {
         if (layout == Layout.DOCK) requestWin(tt + th + dp(5))
-        else requestWin(tt + th * 1.02f + dp(4))
+        else requestWin(tg + tt + th * 1.02f + dp(4))
     }
 
     /** The drawn shape, a little inflated for fingers. Touches outside it are on transparent window. */
@@ -710,13 +747,14 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
             vh += ((th - ch) * K - vh * C) * h; ch += vh * h
             vr += ((tr - cr) * K - vr * C) * h; cr += vr * h
             vt += ((tt - ct) * K - vt * C) * h; ct += vt * h
+            vg += ((tg - cg) * K - vg * C) * h; cg += vg * h
             left -= h
         }
         if (abs(tw - cw) < 0.5f && abs(th - ch) < 0.5f && abs(tr - cr) < 0.5f && abs(tt - ct) < 0.5f &&
-            abs(vw) < 4f && abs(vh) < 4f
+            abs(tg - cg) < 0.5f && abs(vw) < 4f && abs(vh) < 4f
         ) {
-            cw = tw; ch = th; cr = tr; ct = tt
-            vw = 0f; vh = 0f; vr = 0f; vt = 0f
+            cw = tw; ch = th; cr = tr; ct = tt; cg = tg
+            vw = 0f; vh = 0f; vr = 0f; vt = 0f; vg = 0f
             moving = false
             shrinkWindow()
         }
@@ -773,6 +811,8 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         if (moving) step(dt)
         if (layout == Layout.VOLUME) volShown += (volFrac - volShown) * min(1f, dt * 14f)
 
+        c.save()
+        c.translate(0f, cg) // pill gap
         val cx = width / 2f
         pill.set(cx - cw / 2f, ct, cx + cw / 2f, ct + ch)
         val r = min(cr, ch / 2f).coerceAtLeast(0f)
@@ -820,6 +860,7 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
         }
         c.restore()
         if (!layout.big && layout != Layout.DOCK) drawPrivacyDots(c, cx, ch)
+        c.restore() // pill gap
         scheduleNextFrame(now)
     }
 
@@ -1877,6 +1918,17 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        // The island is drawn [cg] lower than the window (pill gap): read touches in the island's own terms.
+        val shift = cg
+        e.offsetLocation(0f, -shift)
+        try {
+            return handleTouch(e)
+        } finally {
+            e.offsetLocation(0f, shift)
+        }
+    }
+
+    private fun handleTouch(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_OUTSIDE -> {
                 onOutsideTouch()
@@ -1943,7 +1995,12 @@ class IslandView(ctx: Context, private val host: Host, private val field: ReplyF
             Layout.MEDIA_C -> if (dir > 0) MediaHub.next() else MediaHub.prev()
             // In the expanded island a sideways swipe always flips pages (skip tracks with the buttons).
             Layout.PAGE_MEDIA, Layout.PAGE_LIVE, Layout.PAGE_DRIP, Layout.PAGE_TIMER -> goPage(dir)
-            Layout.NOTIF, Layout.INFO, Layout.VOLUME, Layout.CHARGE -> collapse()
+            // Like the system pop-up: sideways clears the notification itself; a swipe up only tucks it away.
+            Layout.NOTIF -> {
+                notif?.key?.let { NotifListener.dismiss(it) }
+                collapse()
+            }
+            Layout.INFO, Layout.VOLUME, Layout.CHARGE -> collapse()
             else -> {}
         }
     }

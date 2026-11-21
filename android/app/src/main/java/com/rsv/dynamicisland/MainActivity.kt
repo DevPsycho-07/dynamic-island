@@ -683,8 +683,11 @@ class MainActivity : Activity() {
             slider("Up / down", -10, 40, 1, Prefs.OFFSET_Y, Prefs.DEF_OFFSET_Y) { "$it dp" },
             slider("Width", 80, 220, 2, Prefs.WIDTH, Prefs.DEF_WIDTH) { "$it dp" },
             slider("Height", 20, 44, 1, Prefs.HEIGHT, Prefs.DEF_HEIGHT) { "$it dp" },
+            slider("Pill gap from top", 0, 60, 1, Prefs.PILL_GAP, 0) { "$it dp" },
         ))
-        col.addView(tv("Tap the island to open it, long-press to come here. Swipe down left of the camera for notifications, right of it for quick settings.", 12, Ui.DIM).apply {
+        col.addView(tv("While you drag these, the pill shows so you can see where it sits. " +
+            "Pill gap from top moves the small pill down, clear of the camera; opened from the pill, the island grows from there. The docked view stays put. " +
+            "Tap the island to open it, long-press to come here. Swipe down left of the camera for notifications, right of it for quick settings.", 12, Ui.DIM).apply {
             setPadding(dp(8), dp(14), dp(8), 0)
         })
         return col

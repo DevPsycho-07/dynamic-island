@@ -63,6 +63,7 @@ class NotifListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         connected = true
+        instance = this
         try {
             val m = getSystemService(MediaSessionManager::class.java)
             if (m != null) {
@@ -81,6 +82,7 @@ class NotifListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         connected = false
+        if (instance === this) instance = null
         try { msm?.removeOnActiveSessionsChangedListener(sessionsListener) } catch (_: Exception) { }
         MediaHub.setControllers(null)
         LiveHub.clear()
@@ -265,6 +267,14 @@ class NotifListener : NotificationListenerService() {
     companion object {
         @Volatile
         var connected = false
+
+        @Volatile
+        private var instance: NotifListener? = null
+
+        /** Clear one notification from the shade (a sideways swipe on its island peek, like the system pop-up). */
+        fun dismiss(key: String) {
+            try { instance?.cancelNotification(key) } catch (_: Exception) { }
+        }
 
         /** Android 16 "live updates" (promoted ongoing notifications): flag + the extra apps set to ask for it. */
         private const val FLAG_PROMOTED_ONGOING = 0x00040000

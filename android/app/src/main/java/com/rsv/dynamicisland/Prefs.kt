@@ -11,6 +11,8 @@ object Prefs {
     const val ISLAND_ON = "island_on"
     const val OFFSET_X = "offset_x_dp"
     const val OFFSET_Y = "offset_y_dp"
+    /** Extra drop for the small pill only (so it clears the camera); the docked and full views don't move. */
+    const val PILL_GAP = "pill_gap_dp"
     const val WIDTH = "width_dp"
     const val HEIGHT = "height_dp"
     const val AUTOFIT_DONE = "autofit_done"

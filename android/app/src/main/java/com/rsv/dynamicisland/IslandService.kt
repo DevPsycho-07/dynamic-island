@@ -207,7 +207,9 @@ class IslandService : Service(), IslandView.Host {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         landscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        params?.x = offsetX()
         syncVisibility()
+        applyParams()
         view?.refresh(force = true)
     }
 
@@ -303,7 +305,7 @@ class IslandService : Service(), IslandView.Host {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            x = dpi(prefs.getInt(Prefs.OFFSET_X, 0))
+            x = offsetX()
             y = dpi(prefs.getInt(Prefs.OFFSET_Y, Prefs.DEF_OFFSET_Y))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -319,16 +321,28 @@ class IslandService : Service(), IslandView.Host {
     /** Keyguard showing, refreshed by [syncVisibility]. */
     private var locked = false
 
+    /** A notification (or reply) is on the island right now — the one thing it still shows in landscape. */
+    private var notifUp = false
+
+    override fun onNotifShowing(showing: Boolean) {
+        notifUp = showing
+        if (landscape) main.post { syncVisibility() }
+    }
+
+    /** The camera offset is for portrait; in landscape the island (notifications only) sits at the top centre. */
+    private fun offsetX() = if (landscape) 0 else dpi(prefs.getInt(Prefs.OFFSET_X, 0))
+
     /**
      * Screen off / always-on display: never shown. Lock screen: only while music or video plays
-     * (unless "Show on lock screen" is on). Unlocked: always.
+     * (unless "Show on lock screen" is on). Unlocked: always. Landscape: only while a notification
+     * shows, in place of the system pop-up.
      */
     private fun syncVisibility() {
         val r = root
         locked = screenOn && keyguardLocked()
         val lockOk = !locked || prefs.getBoolean(Prefs.LOCK_ALWAYS, false) ||
             (Prefs.on(prefs, Prefs.F_MEDIA) && MediaHub.showing())
-        val want = r != null && !landscape && !paymentPaused && screenOn && lockOk
+        val want = r != null && (!landscape || notifUp) && !paymentPaused && screenOn && lockOk
         if (want && !attached) {
             try {
                 wm?.addView(r, params)
@@ -340,10 +354,10 @@ class IslandService : Service(), IslandView.Host {
         } else if (!want && attached) {
             removeWindow()
         }
-        // Island up (not landscape / payment mode) with peeks on: it replaces the system pop-ups.
+        // Island available (not payment mode) with peeks on: it replaces the system pop-ups, in landscape too.
         // Not tied to screen / lock state — pop-ups don't show there anyway, and this keeps writes rare.
         HeadsUp.apply(
-            this, r != null && !landscape && !paymentPaused &&
+            this, r != null && !paymentPaused &&
                 prefs.getBoolean(Prefs.PEEK_NOTIFS, true) && Prefs.on(prefs, Prefs.REPLACE_POPUPS)
         )
     }
@@ -374,7 +388,7 @@ class IslandService : Service(), IslandView.Host {
 
     private fun applyPosition() {
         val p = params ?: return
-        p.x = dpi(prefs.getInt(Prefs.OFFSET_X, 0))
+        p.x = offsetX()
         p.y = dpi(prefs.getInt(Prefs.OFFSET_Y, Prefs.DEF_OFFSET_Y))
         applyParams()
     }
@@ -482,7 +496,10 @@ class IslandService : Service(), IslandView.Host {
     private val notifListener: (PeekNotif) -> Unit = { n ->
         main.post {
             val v = view ?: return@post
-            if (!screenOn || !attached) return@post
+            // In landscape the window is away; the peek itself brings it up (see onNotifShowing).
+            if (!screenOn || !(attached || landscape)) return@post
+            // Nothing on screen yet, so an unseen peek (water nag, volume…) mustn't hold the notification back.
+            if (!attached) v.collapse()
             // On the lock screen, show who it's from but not what it says (and no code / reply).
             v.showNotification(if (keyguardLocked()) PeekNotif(n.key, n.appLabel, n.icon, n.appLabel, "New notification", null) else n)
         }
@@ -678,8 +695,9 @@ class IslandService : Service(), IslandView.Host {
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         val v = view
         when (key) {
-            Prefs.OFFSET_X, Prefs.OFFSET_Y -> applyPosition()
-            Prefs.WIDTH, Prefs.HEIGHT -> v?.reloadGeometry()
+            // Shown live while you drag a Position & size slider (it's otherwise hidden in the dock).
+            Prefs.OFFSET_X, Prefs.OFFSET_Y -> { applyPosition(); v?.previewPill() }
+            Prefs.WIDTH, Prefs.HEIGHT, Prefs.PILL_GAP -> { v?.reloadGeometry(); v?.previewPill() }
             Prefs.LAST_DRINK -> {
                 v?.showSplash()
                 updateNotification()
