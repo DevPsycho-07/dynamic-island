@@ -11,8 +11,8 @@ android {
         applicationId = "com.rsv.dynamicisland"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.4.0"
+        versionCode = 17
+        versionName = "2.5.2"
     }
 
     buildTypes {
