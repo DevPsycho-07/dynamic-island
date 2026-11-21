@@ -101,6 +101,9 @@ object Prefs {
     const val PAY_ACTIVE = "pay_active"
     const val PAY_APP = "pay_app"
     const val PAY_APPS = "pay_apps"
+    /** Default on: payment mode also switches developer options / USB + wireless debugging off (see [PaymentMode]). */
+    const val F_PAY_DEV = "f_pay_dev"
+    const val DEV_OFF_BY_US = "dev_off_by_us"  // local state: the developer settings we switched off and owe back
     const val F_MEDIA = "f_media"
 
     fun on(p: SharedPreferences, key: String) = p.getBoolean(key, true)

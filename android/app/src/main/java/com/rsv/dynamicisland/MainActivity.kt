@@ -643,13 +643,16 @@ class MainActivity : Activity() {
             val n = PaymentMode.apps(this).count { isInstalled(it) }
             paySub.text = when {
                 !PaymentMode.canSwitch(this) -> "Needs a one-time permission over adb (see README → Auto payment mode)."
-                else -> "$n app${if (n == 1) "" else "s"} selected. While one is open the island hides and turns its accessibility off; it comes back when you leave."
+                else -> "$n app${if (n == 1) "" else "s"} selected. While one is open the island hides and turns its accessibility " +
+                    (if (Prefs.on(prefs, Prefs.F_PAY_DEV)) "and developer options " else "") +
+                    "off; they come back when you leave."
             }
         }
         loadPay()
         reloaders += { loadPay() }
         col.addView(card(
             toggleRow("Auto payment mode", "Step aside in GPay, Paytm, bank apps… so they don't block", Prefs.F_AUTO_PAY, true) { loadPay() },
+            toggleRow("Also pause developer options", "Developer options and USB / wireless debugging off while a payment app is open (it drops any adb connection)", Prefs.F_PAY_DEV, true) { loadPay() },
             row("Choose apps", "Pick which apps count as payment apps", pill("Choose", Ui.CHIP, Color.WHITE) { showPaymentPicker { loadPay() } }),
             paySub,
         ))

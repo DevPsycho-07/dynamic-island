@@ -201,6 +201,7 @@ class IslandService : Service(), IslandView.Host {
         removeWindow()
         root = null
         HeadsUp.apply(this, false) // island gone: the system pop-ups come back
+        PaymentMode.restoreDevOptions(this) // …and so do developer options, if payment mode had them off
         super.onDestroy()
     }
 

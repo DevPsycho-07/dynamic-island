@@ -130,6 +130,11 @@ block screen overlays. With **Auto payment mode** the island steps aside: when a
 and switches its own accessibility service off; when you leave that app (or lock the phone) it switches it back on
 and returns.
 
+Many of these apps also refuse to run while **developer options** or USB / wireless debugging are on. With
+**Also pause developer options** (on by default) those are switched off for the same stretch and turned back on
+afterwards — only the ones that were on. That drops any adb connection while the payment app is open, and wireless
+debugging only comes back by itself on a network you marked *Always allow*; otherwise Android asks first.
+
 1. Grant two permissions once (they have no on-phone screen), with the phone connected over USB/wireless debugging:
    ```
    adb shell pm grant com.rsv.dynamicisland android.permission.WRITE_SECURE_SETTINGS

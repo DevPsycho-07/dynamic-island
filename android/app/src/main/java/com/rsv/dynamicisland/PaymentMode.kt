@@ -17,6 +17,11 @@ import android.util.Log
  * island turns its own accessibility service off and hides completely; when you leave the app (or
  * lock the phone) it switches accessibility back on and returns.
  *
+ * Many of them also refuse to run while developer options or USB / wireless debugging are on, so
+ * (unless "Also pause developer options" is off) those are switched off for the same stretch and
+ * restored to exactly what they were afterwards. Only settings that were on are touched, and only
+ * those are turned back on.
+ *
  * Needs two one-time grants (no UI exists for them):
  *   adb shell pm grant com.rsv.dynamicisland android.permission.WRITE_SECURE_SETTINGS
  *   adb shell appops set com.rsv.dynamicisland GET_USAGE_STATS allow
@@ -75,16 +80,59 @@ object PaymentMode {
         // Keep the island process alive (paused, no window) while accessibility is off.
         try { a11y.startForegroundService(Intent(a11y, IslandService::class.java)) } catch (_: Exception) { }
         IslandService.running?.pauseForPayment()
+        if (Prefs.on(p, Prefs.F_PAY_DEV)) pauseDevOptions(a11y)
         setAccessibility(a11y, false)
     }
 
     /** Left the payment app (or screen off): switch accessibility back on; the island returns when it reconnects. */
     fun exit(ctx: Context) {
         if (!active(ctx)) return
+        // Before clearing the flag: if we die half-way, the restarted service still owes everything back.
+        restoreDevOptions(ctx)
         Prefs.get(ctx).edit().putBoolean(Prefs.PAY_ACTIVE, false).commit()
         Log.i(TAG, "resuming")
         setAccessibility(ctx, true)
         IslandService.running?.resumeAfterPayment()
+    }
+
+    /**
+     * Developer options, then USB and wireless debugging. Switched off in reverse order (debugging
+     * first, like the Settings app does) and back on in this order. Wireless debugging only comes
+     * back by itself on a network you chose "Always allow" for; otherwise Android asks first.
+     */
+    private val DEV_KEYS = listOf(
+        Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+        Settings.Global.ADB_ENABLED,
+        "adb_wifi_enabled",  // Settings.Global.ADB_WIFI_ENABLED, hidden constant (Android 11+)
+    )
+
+    private fun isOn(ctx: Context, key: String) =
+        try { Settings.Global.getInt(ctx.contentResolver, key, 0) == 1 } catch (_: Exception) { false }
+
+    private fun pauseDevOptions(ctx: Context) {
+        val p = Prefs.get(ctx)
+        val on = DEV_KEYS.filter { isOn(ctx, it) }
+        if (on.isEmpty()) return
+        // Note what we owe before touching anything, so a crash can't leave them off for good.
+        val owed = p.getStringSet(Prefs.DEV_OFF_BY_US, null).orEmpty() + on
+        p.edit().putStringSet(Prefs.DEV_OFF_BY_US, HashSet(owed)).commit()
+        for (key in on.reversed()) {
+            try { Settings.Global.putInt(ctx.contentResolver, key, 0) }
+            catch (e: Exception) { Log.w(TAG, "couldn't switch $key off", e) }
+        }
+        Log.i(TAG, "developer settings off: $on")
+    }
+
+    /** Turn back on exactly the developer settings we switched off. Safe to call any time. */
+    fun restoreDevOptions(ctx: Context) {
+        val p = Prefs.get(ctx)
+        val owed = p.getStringSet(Prefs.DEV_OFF_BY_US, null)?.toSet() ?: return
+        for (key in DEV_KEYS) if (key in owed) {
+            try { Settings.Global.putInt(ctx.contentResolver, key, 1) }
+            catch (e: Exception) { Log.w(TAG, "couldn't switch $key back on", e) }
+        }
+        p.edit().remove(Prefs.DEV_OFF_BY_US).commit()
+        Log.i(TAG, "developer settings restored: $owed")
     }
 
     private fun setAccessibility(ctx: Context, on: Boolean): Boolean = try {
